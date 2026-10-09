@@ -58,6 +58,11 @@ p { font-size: 14px; line-height: 1.75; margin: 9px 0 16px; }
 .text-link { display: inline-block; font-size: 13px; margin-top: 18px; }
 .tool-links { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; margin-top: 18px; }
 .tool-links .text-link { margin-top: 0; }
+.toolbar .text-link { margin-top: 0; }
+.publish-options summary { font-size: 16px; line-height: 1.6; font-weight: 650; cursor: pointer; }
+.publish-options summary::marker { color: var(--accent); }
+.publish-options[open] summary { margin-bottom: 17px; }
+.publish-options:focus-within { border-color: #557c71; }
 .flow-card { background: linear-gradient(130deg,#141e25,#111a20); }
 .flow-step { display: flex; gap: 20px; margin-top: 25px; padding-top: 3px; }
 .flow-step h3 { margin: 0 0 6px; font-size: 16px; }
