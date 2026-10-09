@@ -2,7 +2,7 @@
 
 **Public repo. Private side.**
 
-> **`product-surface` branch — a quieter experience experiment.** The site now emphasizes **Workspace · Add a file · More**, with experimental tools behind More. Encryption, CLI, file formats and old links remain intact. Read the [product direction](docs/PRODUCT_SURFACE.md) and [decision notes](docs/PRODUCT_NOTES.md). This branch is separate from `main` and its screenshots still reflect an earlier tested snapshot.
+> **`product-surface` branch — a quieter experience experiment.** The site now emphasizes **Workspace · Add a file · More**. From a project you can add a private file with repository details prefilled; the Add screen can also compose a Markdown note without an existing file. Concealed folders appear alongside documents in the repository list and open the experimental folder viewer. GitHub publishing options expand only when needed. Encryption, CLI, file formats and old links remain intact. Read the [product direction](docs/PRODUCT_SURFACE.md) and [decision notes](docs/PRODUCT_NOTES.md). This branch is separate from `main` and its screenshots still reflect an earlier tested snapshot.
 
 Private documents beside public code: standard age encryption, automatically generated GitHub landing pages, scannable QR codes, and a static viewer that unlocks files on your device.
 
