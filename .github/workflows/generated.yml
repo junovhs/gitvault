@@ -1,0 +1,35 @@
+name: Generate locked dependencies and public demo
+on:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+      - scripts/generate-demo.ts
+      - scripts/commit-generated.mjs
+      - .github/workflows/generated.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: generated-main
+  cancel-in-progress: false
+jobs:
+  generated:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-fund --no-audit
+      - run: npm run build
+      - run: npm test
+      - run: npm run demo:generate
+      - name: Commit only allowlisted generated files
+        run: node scripts/commit-generated.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

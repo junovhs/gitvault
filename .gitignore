@@ -6,3 +6,7 @@ dist/
 .env.*
 !.env.example
 *.tsbuildinfo
+playwright-report/
+test-results/
+screenshots/
+.DS_Store

@@ -10,6 +10,8 @@
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
+    "test:e2e": "playwright test",
+    "demo:generate": "tsx scripts/generate-demo.ts",
     "cli": "tsx src/cli.ts",
     "vault:encrypt": "tsx src/cli.ts encrypt"
   },
@@ -20,6 +22,7 @@
     "yaml": "^2.8.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@types/node": "^22.0.0",
     "@types/qrcode": "1.5.5",
     "tsx": "^4.19.0",

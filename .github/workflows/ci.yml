@@ -12,7 +12,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,10 +21,44 @@ jobs:
         with:
           node-version: '22'
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
       - name: Typecheck and build
         run: npm run build
-      - name: Run tests
+      - name: Install reference age CLI
+        run: |
+          if ! command -v age; then
+            sudo apt-get update -qq
+            sudo apt-get install -y age
+          fi
+      - name: Unit, integration and age interoperability tests
         run: npm test
-      - name: Dependency audit
+        env:
+          GITVAULT_AGE_BINARY: age
+      - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Real browser tests and screenshots
+        run: npm run test:e2e
+      - name: Static website artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitvault-static
+          path: dist/
+          retention-days: 14
+      - name: Browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-evidence
+          path: |
+            screenshots/
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
