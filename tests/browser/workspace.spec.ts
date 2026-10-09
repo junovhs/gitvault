@@ -45,7 +45,7 @@ test('project context follows Add file and Add folder; bundle controls are initi
   await page.route('https://api.github.com/repos/example/repo/contents**', route => route.fulfill({ json: [] }));
   await page.goto('./#repo=example%2Frepo&ref=feature%2Fprivate');
   await page.getByRole('link', { name: 'Add a private file to this project' }).click();
-  await expect(page.getByRole('heading', { name: 'Lock it before you publish it.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Start with a note or file.' })).toBeVisible();
   const publishing = page.locator('details.publish-options');
   await expect(publishing).toHaveAttribute('open', '');
   await expect(page.getByLabel('Public repository', { exact: true })).toHaveValue('example/repo');
