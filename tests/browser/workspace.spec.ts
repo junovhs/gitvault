@@ -35,8 +35,8 @@ test('repository browse opens a concealed folder in the same project context', a
   await page.getByLabel('Folder password or private identity', { exact: true }).fill(identity);
   await page.getByRole('button', { name: 'Unlock folder' }).click();
   await expect(page.getByRole('heading', { name: 'Private folder contents' })).toBeVisible();
-  await page.locator('.file-list').getByRole('button', { name: 'plans' }).click();
-  await page.locator('.file-list').getByRole('button', { name: 'private-strategy.md' }).click();
+  await page.locator('.file-list').getByRole('button', { name: /plans/ }).click();
+  await page.locator('.file-list').getByRole('button', { name: /private-strategy\.md/ }).click();
   await expect(page.getByRole('heading', { name: 'Project strategy' })).toBeVisible();
   await expect(page.getByText('Not public.')).toBeVisible();
 });
