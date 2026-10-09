@@ -5,6 +5,7 @@ import { safeRelative, validRepo, viewerUrl } from './locator.js';
 import { createBundle } from './bundle.js';
 import { decryptWithPasskey } from './passkeys.js';
 import { renderPasskeyLab } from './passkey-lab.js';
+import { workspaceItem } from './workspace.js';
 import './style.css';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -138,7 +139,7 @@ function crumbs(repo: string, dir: string, ref: string): HTMLElement {
 }
 async function browse(repo: string, dir: string, ref: string): Promise<void> {
   if (!validRepo(repo)) throw new Error('Enter a repository as owner/name.'); if (dir) safeRelative(dir);
-  heading('REPOSITORY EXPLORER', repo, 'Public files stay public. Encrypted documents unlock only on this device.');
+  heading('PROJECT WORKSPACE', repo, 'Public code and locked documents together. Open a private folder to reveal its contents only after unlocking.');
   main.append(crumbs(repo, dir, ref));
   const version = generation; notify('Loading repository files...');
   const entries = await fetchDirectory(repo, dir, ref, aborter.signal); if (version !== generation) return;
@@ -157,11 +158,13 @@ async function browse(repo: string, dir: string, ref: string): Promise<void> {
     }).sort((a, b) => Number(b.type === 'dir') - Number(a.type === 'dir') || a.name.localeCompare(b.name));
     for (const entry of displayed) {
       if (entry.type !== 'file' && entry.type !== 'dir') continue;
-      const locked = entry.name.endsWith('.age');
-      const a = link('', route({ repo, ref, [entry.type === 'dir' ? 'dir' : 'file']: entry.path }), 'file-row');
-      a.append(el('span', entry.type === 'dir' ? '/' : locked ? '#' : '-', 'file-icon' + (locked ? ' locked' : '')));
-      const copy = el('span', '', 'file-copy'); copy.append(el('strong', locked && !generated.checked ? entry.name.slice(0, -4) : entry.name), el('span', entry.type === 'dir' ? 'Folder' : locked ? 'Encrypted document' : 'Public file'));
-      a.append(copy, el('span', locked ? 'Unlock' : entry.type === 'dir' ? 'Open' : size(entry.size), locked ? 'badge' : 'muted')); list.append(a);
+      const item = workspaceItem(repo, ref, entry, generated.checked);
+      const a = link('', item.href, 'file-row');
+      a.append(el('span', item.isFolder ? '/' : item.locked ? '#' : '-', 'file-icon' + (item.locked ? ' locked' : '')));
+      const copy = el('span', '', 'file-copy');
+      copy.append(el('strong', item.label), el('span', item.detail));
+      a.append(copy, el('span', item.action || size(entry.size), item.locked ? 'badge' : 'muted'));
+      list.append(a);
     }
     if (!list.childElementCount) list.append(el('p', 'No matching files in this folder.', 'empty'));
   };
@@ -353,6 +356,11 @@ async function render(): Promise<void> {
     }
     else if (page === 'more') more();
     else if (page === 'about') about();
+    else if (p.get('repo') && p.get('file')?.endsWith('.gvfolder.age')) {
+      // Preserve older document-viewer links while sending folder containers to their proper viewer.
+      const href = './folder.html' + route({ repo: p.get('repo')!, file: p.get('file')!, ...(p.get('ref') ? { ref: p.get('ref')! } : {}) });
+      location.replace(href);
+    }
     else if (p.get('repo') && p.get('file')) await showRemote(p.get('repo')!, p.get('file')!, p.get('ref') || '', p.get('demo') === '1');
     else if (p.get('repo')) await browse(p.get('repo')!, p.get('dir') || '', p.get('ref') || '');
     else home();
