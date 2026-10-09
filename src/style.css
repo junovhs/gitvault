@@ -110,6 +110,9 @@ p { font-size: 14px; line-height: 1.75; margin: 9px 0 16px; }
 .markdown blockquote { border-left: 3px solid var(--accent); padding-left: 18px; margin: 20px 0; color: var(--muted); }
 pre, .markdown pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #0c131e; border: 1px solid #29394d; border-radius: 10px; padding: 22px; font: 12px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace; max-height: 600px; overflow: auto; }
 .editor { display: block; width: 100%; min-height: 420px; background: #0a111a; border: 1px solid #3c4d65; border-radius: 9px; padding: 20px; color: #e4edf9; font: 13px/1.8 ui-monospace,Consolas,monospace; resize: vertical; }
+.note-editor { min-height: 240px; margin-top: 9px; }
+.note-fields .field { margin-top: 18px; }
+.tabs button[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }
 .results:not(:empty) { margin-top: 25px; padding: 24px; border: 1px solid #315543; border-radius: 14px; background: #12221a; }
 .results button { margin: 5px 12px 12px 0; }
 .success-message { color: var(--accent); font-weight: 650; }
