@@ -4,7 +4,7 @@ import { safeRelative, confined, viewerUrl } from '../src/paths.js';
 import { validRepo } from '../src/locator.js';
 
 test('reject traversal, control characters, Windows paths and Git internals', () => {
-  for (const p of ['../secret', '/etc/passwd', 'a/../b', '', 'a//b', './x', 'C:/temp', 'a\\b', 'a\0b', 'a\nb', '.git/config', 'x/.GIT/config', 'a./b']) assert.throws(() => safeRelative(p), undefined, p);
+  for (const p of ['../secret', '/etc/passwd', 'a/../b', '', 'a//b', './x', 'C:/temp', 'a\\b', 'a\0b', 'a\nb', '.git/config', 'x/.GIT/config', 'a./b']) assert.throws(() => safeRelative(p), /Unsafe/, p);
 });
 test('confine valid files', () => {
   assert.equal(safeRelative('private/strategy.md'), 'private/strategy.md');
