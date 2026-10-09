@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { constants } from 'node:fs';
 import { lstat, mkdir, open, rename, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { safeRelative } from './locator.js';
@@ -9,8 +10,7 @@ export function confined(base: string, relative: string): string {
   if (!dest.startsWith(path.resolve(base) + path.sep)) throw new Error('Path escapes directory');
   return dest;
 }
-
-/** Check every existing component, not only entries returned by readdir. */
+/** Reject existing symlink components and hard-linked files. Not a hostile-process sandbox. */
 export async function noSymlinks(root: string, relative: string): Promise<void> {
   const parts = safeRelative(relative).split('/');
   let current = root;
@@ -25,7 +25,31 @@ export async function noSymlinks(root: string, relative: string): Promise<void> 
     }
   }
 }
-
+/** Enforce the limit while reading, not after allocating an unbounded file buffer. */
+export async function readBounded(root: string, relative: string, limit: number): Promise<Buffer> {
+  if (!Number.isSafeInteger(limit) || limit < 0) throw new Error('Invalid file-size limit');
+  await noSymlinks(root, relative);
+  const handle = await open(confined(root, relative), constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.nlink > 1) throw new Error('Expected a regular, unlinked file: ' + relative);
+    if (info.size > limit) throw new Error('File exceeds size limit: ' + relative);
+    for (;;) {
+      const chunk = Buffer.alloc(Math.min(65536, limit + 1 - total));
+      const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
+      if (!bytesRead) { chunk.fill(0); break; }
+      total += bytesRead;
+      if (total > limit) { chunk.fill(0); throw new Error('File grew beyond size limit: ' + relative); }
+      chunks.push(chunk.subarray(0, bytesRead));
+    }
+    return Buffer.concat(chunks, total);
+  } finally {
+    for (const chunk of chunks) chunk.fill(0);
+    await handle.close();
+  }
+}
 /** Atomic replacement of one file. A multi-file publish is not a filesystem transaction. */
 export async function atomicWrite(root: string, relative: string, data: string | Uint8Array): Promise<void> {
   await noSymlinks(root, relative);
