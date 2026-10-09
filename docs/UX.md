@@ -1,21 +1,33 @@
-# Product UX specification
+# Product workflow
 
-## A. GitHub landing page
+## Creating a private document
 
-User clicks `private/strategy.md` on GitHub. GitHub renders an automatically generated Markdown explanation, direct **Open in GitVault** link, QR image, and link to `strategy.md.age`. Link/QR contains only `repo` and `file` query values. The ciphertext is stored separately so GitHub renders a clean landing page instead of a wall of gibberish.
+A user has a free public repository and wants a private document beside its code. They can either use the local CLI's ignored workspace or select the document in the browser.
 
-## B. Browser viewer
+The CLI generates a `.age` file, Markdown landing page and SVG QR before committing. The browser can download the same public artifact bundle as a ZIP; the user extracts and commits only those generated files. Neither route requires putting plaintext into Git history.
 
-User follows the link. Viewer shows repo/path and an unlock form (password or private age identity for this prototype). It fetches public ciphertext and decrypts in local browser memory. If successful, it displays UTF-8 plaintext, including Markdown *source* (rendered Markdown is a follow-up); if incorrect it displays an error. No plaintext or key is transmitted to GitVault servers.
+## Finding it a week later
 
-## C. Phone QR
+The user clicks the generated Markdown page on GitHub. It says the document is encrypted, names the configured public file, and offers an **Open in GitVault** link and QR. The link/QR contains no key.
 
-User scans the GitHub landing-page QR and opens the same viewer on the phone, then unlocks *on the phone* if they possess the required key. A separate desktop-approval flow is a future feature, not implied by the QR.
+Following the link opens a static viewer that fetches public ciphertext. The user chooses the unlock method that was configured for that file: password, private age identity, or a compatible experimental encryption passkey. Successful decryption renders the document locally. No clone is needed.
 
-## D. Local workflow
+## Editing
 
-Use ignored private workspace, run CLI encryption before commit, publish only generated artifacts. Later: clone the repo, provide decryption secret, run `gitvault decrypt`, work on ignored plaintext. Never use post-push encryption; once plaintext lands in Git history, it is exposed.
+The regular viewer has preview, source and edit modes for UTF-8 documents. **Encrypt edited copy** opens fresh encryption settings; it does not silently preserve or infer all previous recipients. The user deliberately chooses the new unlock method and downloads a replacement ciphertext or public bundle.
 
-## E. Evolution
+The website does not automatically commit to GitHub. Local editing after cloning uses `gitvault decrypt`, an ignored plaintext workspace, then `gitvault encrypt --stage` before the next commit.
 
-Phase 1: password and age key UX. Phase 2: Markdown rendering with sanitized HTML, local editing/re-encrypting, ZIP archive encryption for hidden filenames. Phase 3: WebAuthn PRF passkeys and robust credential recovery; per-file wrapped symmetric keys enabling multiple unlock methods. Phase 4: opt-in authenticated GitHub commits and cross-device QR approvals.
+## Phone experience
+
+The permanent QR opens the same viewer on the phone. The user still needs the configured password, identity or compatible passkey. GitVault does not implement a custom phone-to-desktop pairing channel. A platform's own cross-device passkey prompt is distinct and is not guaranteed to carry PRF output.
+
+## Private folders
+
+The separate folder experiment packages a small directory into one age-encrypted container. GitHub sees the outer file but not its internal paths. After unlocking, the browser displays a private file tree and safe previews, with deliberate individual-file or plaintext ZIP exports. The whole folder is re-encrypted after edits; this is not a filesystem mount.
+
+## Recovery and clear failure
+
+Wrong keys, unsupported authenticators, oversized inputs, rate limits and unsafe paths must produce actionable failures rather than plaintext fallback. Passkey creation requires an independent recovery key. A user can open a downloaded ciphertext locally even when GitHub API access is unavailable.
+
+Lock controls and idle locking remove private content from the UI. The product must not imply forensic memory erasure, retroactive Git-history deletion or security against a compromised viewer host.

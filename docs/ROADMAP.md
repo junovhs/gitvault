@@ -1,47 +1,49 @@
 # Roadmap
 
-## Milestone 0 — repo bootstrap
+## Implemented foundation
 
-- [x] Document product requirements and architecture
-- [x] Build first-pass CLI with standard age encryption, QR and landing-page generation
-- [x] Build static TypeScript viewer and local encrypt/download form
-- [x] Create security model and README
-- [ ] Install dependencies and verify compile/runtime compatibility
-- [ ] Add comprehensive tests, fixtures and verified end-to-end encryption roundtrip
-- [ ] Add protections and recovery for partial file writes and accidental plaintext commits
+- [x] Static TypeScript viewer without React, a database or server-side decryption.
+- [x] Standard age passwords, recipients, identities and ASCII armor.
+- [x] Generated GitHub Markdown landing pages and public-link SVG QR codes.
+- [x] Public repository browsing, branch/ref selection, filtering and rate-limit handling.
+- [x] Local encrypted-file opening without GitHub requests.
+- [x] Safe Markdown preview, local editing and re-encrypted downloads.
+- [x] Ciphertext-only GitHub ZIP bundles.
+- [x] No-build CLI launcher, ignored workspace, keygen, exact staging and local hook.
+- [x] Ownership manifests, bounded reads, path/link/collision guards and restore overwrite refusal.
+- [x] Native age interoperability and real Chromium end-to-end checks.
+- [x] CI-managed dependency locking, verified public demo and real screenshot gallery.
+- [x] Verification-gated static Pages deployment workflow.
 
-## Milestone 1 — usable MVP
+## Implemented experiments
 
-- [ ] Add safe Markdown preview using a sanitized renderer
-- [ ] Make CLI distributable and truly plug-and-play for other repos
-- [ ] Support a declarative glob config without exposing plaintext paths to Git
-- [ ] CI testing against the official age implementation
-- [ ] Deploy free static GitHub Pages site
-- [ ] Repo explorer polish, better mobile navigation, rate limit messages
-- [ ] Local document edit → re-encrypt and save
+- [x] WebAuthn PRF encryption/unlock with an independently verified age recovery route.
+- [x] Virtual authenticator tests for PRF success and unsupported-PRF rejection.
+- [x] Private folder containers with encrypted internal names and browser tree navigation.
+- [x] Firefox and WebKit basic unlock smoke-check configuration.
 
-## Milestone 2 — keys and folders
+An implementation or test definition being committed is not proof that every current run passed. See the exact commit's Actions result and [testing scope](TESTING.md).
 
-- [ ] Random document keys with securely wrapped per-method access
-- [ ] Passphrase and public-recipient access to same file with key rotation
-- [ ] Private archive/folder tree with hidden filenames
-- [ ] Local backup/export of recovery credentials
+## Before a production recommendation
 
-## Milestone 3 — phone unlocking
+- [ ] Independent security and cryptographic integration review.
+- [ ] Physical iPhone, Android, security-key and synced-passkey-provider matrix.
+- [ ] Recovery usability testing and explicit hostname-migration guidance.
+- [ ] Whole-vault transaction/recovery design for interrupted writes.
+- [ ] Deliberate source deletion/pruning workflow with preview and confirmation.
+- [ ] Windows/macOS CLI and filesystem integration coverage.
+- [ ] Dependency maintenance and longer-lived reproducible release artifacts.
 
-- [ ] WebAuthn PRF passkey encryption with compatibility detection and recovery
-- [ ] Phone QR opens & decrypts locally
-- [ ] QR-assisted desktop unlock using authenticated ephemeral pairing
-- [ ] Multiple people per document; recipient management and re-encryption
-- [ ] Security audit before recommending real secrets
+## Product expansion
 
-## Milestone 4 — GitHub integration
+- [ ] Declarative glob/remapping config without exposing plaintext to Git staging.
+- [ ] CLI folder-container mode and import of browser-created bundles.
+- [ ] Multiple user-managed recipients and explicit recipient-rotation UX.
+- [ ] GitHub-authorized commit support, strictly opt-in and ciphertext-only.
+- [ ] Authenticated, ephemeral custom phone-to-desktop approval channel.
+- [ ] VS Code integration or a local change watcher.
+- [ ] Larger-file streaming after resource and interruption behavior are reviewed.
 
-- [ ] GitHub authorized commit support, strictly opt-in
-- [ ] Checks that only ciphertext and landing files are staged
-- [ ] VS Code extension, CLI packaging, Git attribute/filter research
-- [ ] Optional local encrypted folder mount and change watcher
+## Explicit non-goals
 
-## Non-goals
-
-Hosted storage, proprietary encryption, a server that sees passwords, tracking users, or claiming that a QR code alone provides decryption authorization.
+A server that sees decryption secrets, proprietary cryptography, tracking users, a password-reset backdoor, or pretending that a public QR is authorization. Encryption after a plaintext push is not a safe design.

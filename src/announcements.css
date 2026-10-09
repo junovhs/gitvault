@@ -1,0 +1,4 @@
+.folder-announcement { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 10px 20px; background: #14271f; border-bottom: 1px solid #2b4b3b; color: #b4cbbf; font: 12px/1.5 ui-sans-serif, system-ui, sans-serif; }
+.folder-announcement a { color: #c5f4dd; text-underline-offset: 3px; font-weight: 650; }
+.folder-announcement .experiment-tag { font-size: 10px; border: 1px solid #456c56; border-radius: 5px; padding: 1px 5px; }
+@media print { .folder-announcement { display: none; } }

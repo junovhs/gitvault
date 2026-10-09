@@ -2,27 +2,29 @@
 
 ## Verified checkpoint: October 9, 2026
 
-The first complete verification run passed on source commit `f23e96fd819dc2d45c83fa39472993a9ebb555d8`:
+Source commit `7fc8cf5c4e86b30615713440cdb75e09309a4ca1` passed the complete verification workflow:
 
-- TypeScript compilation and production Vite build.
-- Unit and disposable-Git-repository integration tests.
-- Standard age CLI interoperability, in both directions, including ASCII armor.
-- Production dependency audit at the configured high-severity threshold.
-- Chromium end-to-end tests: mobile layout, real worker password decryption, local key decryption, privacy-safe Markdown, editing/re-encryption, and ciphertext-only ZIP bundles.
-- Static build and browser screenshots uploaded as GitHub Actions artifacts.
+- TypeScript compilation and both production static entrypoints.
+- **52 Node unit/integration tests**, no skips in CI, including official age CLI interoperability.
+- **15 Chromium browser tests**, including virtual PRF passkeys, independent recovery, encrypted folders, worker-based decryption, local editing, safe preview and public bundles.
+- **2 Firefox compatibility checks** and **2 WebKit compatibility checks** for password/identity unlock and mobile-width layout.
+- Full production/development dependency audit at the configured high-severity threshold.
+- Static website and browser evidence uploaded as workflow artifacts.
 
-[Verification run](https://github.com/junovhs/gitvault/actions/runs/37995601097)
+[Successful verification run](https://github.com/junovhs/gitvault/actions/runs/37997989908)
 
-The maintenance workflow separately verified and committed the dependency lockfile and public demo. All demo passwords and documents are intentionally public, not real credentials.
+### Audit follow-up
 
-## Continuing work
+That checkpoint's audit still reported one **moderate** issue in `fflate` 0.8.2, below the prior failure threshold. The manifest is being updated to patched **0.8.3**, followed by lockfile regeneration and another complete verification. GitVault's production folder format does not use ZIP decompression, but a known vulnerable dependency should not be retained merely because current application paths avoid it.
 
-The current branch can be newer than the verified checkpoint above. The latest **Verify GitVault** run is authoritative for its own commit. A green build is not an independent security audit.
+Reference: [GHSA-px8p-9vwx-vf98](https://github.com/advisories/GHSA-px8p-9vwx-vf98).
 
-- Experimental passkey integration must include an independent recovery route and explicit compatibility limits.
-- Deployment is gated on verification and a one-time Pages setting. It must not request an extra secret or pretend the site is live before it is deployed.
-- More tests are being added for resource exhaustion, stale browser state and filesystem safety.
+## Implemented since the first bootstrap
 
-## Product boundaries
+The repository now includes a mobile-responsive document viewer, no-build CLI launcher, pre-commit integration, passkey/recovery experiment, private-folder experiment, synthetic demo and real screenshot gallery. These are functioning implementations rather than UI-only mockups; current behavior still depends on the exact commit's verification result.
 
-No backend, login database or server-side decryption. No automatic GitHub write authorization in the viewer. A public landing-page QR is a link, not a decryption capability. Custom phone-to-desktop approval remains a separate future feature.
+## Remaining boundaries
+
+GitHub Pages requires its one-time repository setting before the site is live. Custom phone-to-desktop pairing, direct GitHub writes from the viewer, CLI glob remapping and whole-vault transactional updates are not implemented. Physical device/provider passkey testing and independent security review remain outstanding.
+
+The current branch can be newer than the checkpoint above. The latest **Verify GitVault** run is authoritative for its own commit. A green test run is not a security audit, and a Pages workflow that skips an unconfigured site is not a deployment.
