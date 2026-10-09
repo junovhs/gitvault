@@ -3,7 +3,7 @@ import { packFolder, unpackFolder, MAX_FOLDER_FILES, MAX_FOLDER_BYTES, type Fold
 import { createBundle } from './bundle.js';
 import { fetchBytes, MAX_DOWNLOAD } from './github.js';
 import { runCrypto, cancelCrypto } from './crypto-client.js';
-import { safeRelative, viewerUrl } from './locator.js';
+import { safeRelative, viewerUrl, validRepo } from './locator.js';
 import { renderMarkdown } from './markdown.js';
 import './style.css';
 
@@ -65,6 +65,8 @@ function createScreen(): void {
   const name = input(settings, 'Public bundle name', 'text', 'private-folder');
   settings.append(el('p', 'Use a non-sensitive outer name. Internal filenames are encrypted, but this name is public.', 'small muted'));
   const repo = input(settings, 'Public repository for folder bundle'); repo.placeholder = 'owner/repository';
+  const passedRepo = new URLSearchParams(location.hash.slice(1)).get('repo') || '';
+  if (validRepo(passedRepo)) repo.value = passedRepo;
   const output = input(settings, 'Folder artifacts directory', 'text', 'private-folders');
   const results = el('section', '', 'results'); const version = epoch;
   const perform = async (bundle: boolean) => {
