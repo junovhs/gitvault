@@ -82,8 +82,11 @@ function shell(active: string): void {
   const top = el('div', '', 'topbar'); const inside = el('div', '', 'topbar-inner');
   const brand = link('GitVault', '#', 'brand'); brand.prepend(el('span', 'G', 'brand-mark'));
   const nav = el('nav', '', 'nav'); nav.setAttribute('aria-label', 'Main navigation');
-  for (const [text, page] of [['Browse', ''], ['Open a file', 'open'], ['Encrypt', 'encrypt'], ['Passkey lab', 'passkeys'], ['How it works', 'about']]) {
-    const a = link(text, page ? route({ page }) : '#'); if (page === active) a.setAttribute('aria-current', 'page'); nav.append(a);
+  // Three clear choices; specialized tools and technical detail live under More.
+  for (const [text, page] of [['Workspace', ''], ['Add a file', 'encrypt'], ['More', 'more']]) {
+    const a = link(text, page ? route({ page }) : '#');
+    if (page === active || (page === 'more' && ['open', 'about', 'passkeys'].includes(active))) a.setAttribute('aria-current', 'page');
+    nav.append(a);
   }
   inside.append(brand, nav); top.append(inside); app.append(top);
   main = el('main', '', 'main'); main.id = 'main'; app.append(main);
@@ -111,21 +114,21 @@ function chooseLocal(parent: HTMLElement): void {
   }, 'primary'));
 }
 function home(): void {
-  heading('PRIVATE FILES. PUBLIC REPOSITORIES.', 'Your repo has a private side.', 'Keep your code open and your documents encrypted. Come back on any device. Unlock only what is yours.');
+  heading('PUBLIC PROJECTS. PRIVATE THINKING.', 'Your repo has a private side.', 'Keep your private notes and public code together. Open a project or add an encrypted file, without creating an account.');
   const grid = el('div', '', 'hero-grid');
-  const browser = card('Open a public repository', 'A familiar file browser, with an unlock button for encrypted documents.');
+  const browser = card('Open a project', 'Browse a public GitHub repository and unlock encrypted documents when you need them.');
   const repo = input(browser, 'GitHub repository', { placeholder: 'owner/repository' });
   const ref = input(browser, 'Branch or commit (optional)', { placeholder: 'Uses the repository default branch' });
   const go = () => { const value = repo.value.trim(); if (!validRepo(value)) throw new Error('Enter a repository as owner/name.'); location.hash = route({ repo: value, ...(ref.value ? { ref: ref.value } : {}) }); };
-  browser.append(action('Browse repository', go, 'primary full'));
+  browser.append(action('Open project', go, 'primary full'));
   repo.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); try { go(); } catch (e) { notify((e as Error).message, true); } } });
   browser.append(link('Try the public demo', route({ repo: 'junovhs/gitvault', file: 'examples/private/welcome.md.age', ref: 'main', demo: '1' }), 'text-link'));
-  const visual = card('Public storage. Private contents.'); visual.classList.add('flow-card');
-  for (const [number, title, detail] of [['01', 'Write normally', 'Private documents stay in an ignored local folder.'], ['02', 'Publish ciphertext', 'GitHub gets an encrypted file, a landing page, and a QR.'], ['03', 'Open. Unlock. Read.', 'The viewer decrypts locally on your device.']]) {
-    const row = el('div', '', 'flow-step'); const copy = el('div'); copy.append(el('h3', title), el('p', detail)); row.append(el('span', number, 'step-number'), copy); visual.append(row);
-  }
-  grid.append(browser, visual); main.append(grid);
-  const strip = el('div', '', 'quick-actions'); strip.append(link('Already have a .age file? Open it locally', route({ page: 'open' })), link('Start with a document: encrypt a file', route({ page: 'encrypt' }))); main.append(strip); securityNote(main);
+  const start = card('Your files, your keys', 'Use an existing encrypted file or create one to publish beside your project.');
+  start.append(link('Add a private file', route({ page: 'encrypt' }), 'button-link'));
+  start.append(link('Open a saved encrypted file', route({ page: 'open' }), 'text-link'));
+  grid.append(browser, start); main.append(grid);
+  main.append(el('p', 'GitVault reads public repository files from GitHub. It does not discover your repositories, store passwords, or automatically commit changes.', 'small muted'));
+  securityNote(main);
 }
 function crumbs(repo: string, dir: string, ref: string): HTMLElement {
   const row = el('nav', '', 'breadcrumbs'); row.setAttribute('aria-label', 'Repository path'); row.append(link(repo, route({ repo, ref })));
@@ -305,6 +308,19 @@ function encryptScreen(initial?: File): void {
   form.append(buttons); grid.append(form, settings); main.append(grid, results); securityNote(main);
   rememberCleanup(() => { secret.value = ''; confirm.value = ''; file.value = ''; initial = undefined; });
 }
+function more(): void {
+  heading('TOOLS & DETAILS', 'More, when you need it.', 'The everyday experience is files and folders. These tools are here when you need more control.');
+  const grid = el('div', '', 'hero-grid');
+  const files = card('Files and folders', 'Open a downloaded file, or work with an encrypted folder whose internal filenames stay private.');
+  files.append(link('Open an encrypted file', route({ page: 'open' }), 'text-link'));
+  files.append(link('Open a concealed folder (experimental)', './folder.html', 'text-link'));
+  files.append(link('Create a concealed folder (experimental)', './folder.html#mode=encrypt', 'text-link'));
+  const tools = card('Keys and guidance', 'Advanced unlock methods are optional. Keep an independent backup of any recovery key.');
+  tools.append(link('Passkey lab (experimental)', route({ page: 'passkeys' }), 'text-link'));
+  tools.append(link('How GitVault works', route({ page: 'about' }), 'text-link'));
+  tools.append(link('Security and limitations', 'https://github.com/junovhs/gitvault/blob/product-surface/docs/SECURITY.md', 'text-link'));
+  grid.append(files, tools); main.append(grid); securityNote(main);
+}
 function about(): void {
   heading('HIDE IN PLAIN SIGHT', 'One repo. Two kinds of files.', 'GitHub stores the locked document. GitVault makes it readable on your device.');
   const article = card('The complete workflow');
@@ -331,6 +347,7 @@ async function render(): Promise<void> {
       renderPasskeyLab(main, { notify, isCurrent: () => generation === version, onCleanup: rememberCleanup });
       securityNote(main);
     }
+    else if (page === 'more') more();
     else if (page === 'about') about();
     else if (p.get('repo') && p.get('file')) await showRemote(p.get('repo')!, p.get('file')!, p.get('ref') || '', p.get('demo') === '1');
     else if (p.get('repo')) await browse(p.get('repo')!, p.get('dir') || '', p.get('ref') || '');
