@@ -21,5 +21,5 @@ export function landingPage(opts: { name: string; ciphertextFile: string; repo: 
     '',
     'GitHub exposes the filename, size and commit history. Never commit plaintext or private keys.',
     '',
-  ].join('\\n');
+  ].join('\n');
 }
