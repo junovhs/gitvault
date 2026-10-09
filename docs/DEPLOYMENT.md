@@ -1,18 +1,20 @@
 # Static deployment
 
-GitVault is a TypeScript application compiled by Vite. Deployment needs only the contents of `dist/`; no running Node server, database or user-account service is required.
+GitVault is TypeScript compiled by Vite. Deployment needs only `dist/`; no running Node server, database or user-account service is required. There are two entrypoints: `index.html` for documents/passkeys and `folder.html` for encrypted folders.
 
-## GitHub Pages
+## GitHub Pages: one-time setting
 
-The repository includes a gated Pages workflow. It downloads an already-tested static build from **Verify GitVault** instead of rebuilding different code during deployment. It deploys only when the successful main-branch run matches the current main commit.
+Set **Settings > Pages > Build and deployment > Source: GitHub Actions** in this repository.
 
-GitHub Pages still requires one repository setting:
+Until that setting is enabled, the deployment workflow records the requirement and skips deployment. A successful skipped workflow is not a live website. No extra password, PAT or secret is requested.
 
-**Settings > Pages > Build and deployment > Source: GitHub Actions**
+After enabling Pages, run **Deploy verified site to GitHub Pages**, or push a change and allow verification to complete. The configured project URL is `https://junovhs.github.io/gitvault/`; the folder viewer lives at `/gitvault/folder.html`.
 
-When Pages is not enabled, the deployment workflow records that requirement in its summary and skips deployment. It does not request another token or claim that a site is live. After enabling Pages, run **Deploy verified site to GitHub Pages**, or push a change and let verification complete.
+## Deploy the tested artifact, not a different rebuild
 
-The configured project URL is `https://junovhs.github.io/gitvault/`. Its availability depends on Pages being enabled and a successful deployment. The public demo's links use that address.
+The Pages workflow downloads `gitvault-static` from a successful main-branch **Verify GitVault** run. It does not rebuild dependencies during deployment. The run must have tested the current source tree.
+
+An automatically generated screenshot-gallery commit can follow a successful run. Such a commit is allowed only when the **complete, non-truncated Git trees match outside `docs/screenshots/`**. Code, dependencies, workflow changes, file modes and unrelated documentation changes still block deployment until verified. This avoids publishing unverified source while allowing tested screenshots to appear in GitHub.
 
 ## Run locally
 
@@ -21,21 +23,19 @@ npm ci
 npm run dev
 ```
 
-Open the URL printed by Vite with `/gitvault/` as its base path. For the built version:
+Open the Vite URL with `/gitvault/` as its base. For production output:
 
 ```sh
 npm run build
 npm run preview
 ```
 
-Use localhost or HTTPS. Opening `index.html` directly with a `file:` URL does not provide the required worker/module/secure-context behavior.
+Use localhost or HTTPS. Opening HTML with a `file:` URL does not provide the required module/worker/secure-context behavior.
 
-## Download the verified static artifact
+## Download verification artifacts
 
-Open a successful **Verify GitVault** run and download **gitvault-static**. Serve its contents from a static host with the correct base path. Browser screenshots and test reports are in **browser-evidence**; a separately published gallery is also under `docs/screenshots/` when the screenshot workflow has completed.
+A successful **Verify GitVault** run includes `gitvault-static`, `browser-evidence`, and Firefox/WebKit evidence artifacts. The repository's screenshot gallery updates from successful main runs and records its tested commit. Every published screenshot uses synthetic public fixtures.
 
-To host at a different base path, set `VITE_BASE` when building and update the viewer URL in the consuming repositories' `.gitvault.yml` files. A custom hostname changes the passkey relying-party scope. Keep an independent age recovery identity before moving a passkey-enabled vault.
+Serve the static artifact on a trusted host with the correct base path. To change that path, set `VITE_BASE` when building and update each consuming repo's configured viewer URL.
 
-## Trust and privacy
-
-The site does not need a GitHub token to read public ciphertext. Secrets and decrypted documents must never be added to a deployment, build log, analytics system or service worker cache. Browser security headers and self-hosting reduce some risks, but a compromised host can still serve code that steals a key. Review and trust the entire viewer origin.
+Changing the hostname changes passkey relying-party scope. Preserve an independent age recovery identity before moving a passkey-enabled vault. HTTPS and a static host do not remove the need to trust the JavaScript served from that origin.
