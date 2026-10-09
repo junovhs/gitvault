@@ -21,3 +21,7 @@ Use explicit size/path checks for public inputs. Do not automatically overwrite 
 ## Documentation
 
 Distinguish implemented code, tests actually run, virtual-authenticator evidence, physical-device coverage and future plans. State which commit was verified. A successful build is not an audit; a successful Pages workflow that skipped an unconfigured site is not a deployment.
+
+## Product-surface experiment (this branch)
+
+The `product-surface` branch is deliberately isolated from `main`. See [docs/PRODUCT_SURFACE.md](docs/PRODUCT_SURFACE.md) and [docs/PRODUCT_NOTES.md](docs/PRODUCT_NOTES.md) before changing the UI. Preserve one calm default workspace, an add-file action, and a secondary More section for specialized tools. Old `#page=...` routes and `folder.html` public landing links must remain valid. Do not imply repository discovery, authentication, local key persistence, direct GitHub commits, or multi-recipient controls that have not been implemented. UI consolidation must not weaken security checks.
