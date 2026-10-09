@@ -9,7 +9,7 @@
 
 ### [Open in GitVault](https://junovhs.github.io/gitvault/#repo=junovhs%2Fgitvault&file=examples%2Fprivate%2Fwelcome.md.age&ref=main&demo=1)
 
-Open the viewer and unlock using the password or age identity used to encrypt this file.
+Open the viewer and use the unlock method configured for this file: password, private age identity, or a supported encryption passkey. Not every method works for every file.
 
 Or scan to open the viewer **on your phone**:
 
