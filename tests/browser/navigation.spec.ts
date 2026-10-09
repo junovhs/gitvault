@@ -2,14 +2,14 @@ import { test, expect } from '@playwright/test';
 
 test('skip link moves keyboard focus without changing the application route', async ({ page }) => {
   await page.goto('./#page=encrypt');
-  await expect(page.getByRole('heading', { name: 'Lock it before you publish it.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Start with a note or file.' })).toBeVisible();
   const before = page.url();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('main')).toBeFocused();
   expect(page.url()).toBe(before);
-  await expect(page.getByRole('heading', { name: 'Lock it before you publish it.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Start with a note or file.' })).toBeVisible();
 });
 
 test('route changes move focus to the new main region and reset scroll', async ({ page }) => {
