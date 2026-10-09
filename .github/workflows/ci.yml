@@ -34,8 +34,8 @@ jobs:
         run: npm test
         env:
           GITVAULT_AGE_BINARY: age
-      - name: Audit production and development dependencies
-        run: npm audit --audit-level=high
+      - name: Audit all dependencies, including moderate issues
+        run: npm audit --audit-level=moderate
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Full browser tests and screenshots
