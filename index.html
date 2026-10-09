@@ -8,12 +8,10 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' https://api.github.com ws://127.0.0.1:* ws://localhost:*; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>GitVault | Public repo. Private side.</title>
   <meta name="description" content="Encrypt private files for public GitHub repositories. Open them on another device and unlock locally, without an account.">
-  <link rel="stylesheet" href="/src/announcements.css">
   <link rel="stylesheet" href="/src/navigation.css">
 </head>
 <body>
   <a class="skip-link" href="#main" data-skip-content>Skip to main content</a>
-  <aside class="folder-announcement" aria-label="Experimental tools"><span>Private filenames, too.</span><a href="./folder.html">Explore encrypted folders</a><span class="experiment-tag">Experimental</span></aside>
   <div id="app"></div>
   <noscript>GitVault needs JavaScript to encrypt and decrypt locally. No password or file should be sent to a server.</noscript>
   <script type="module" src="/src/web.ts"></script>
