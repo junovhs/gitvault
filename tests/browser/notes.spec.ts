@@ -29,7 +29,10 @@ test('write a private note and download only encrypted age ciphertext', async ({
   expect(new TextDecoder().decode(content)).not.toContain('Thinking privately');
   expect(external).toEqual([]);
   expect(await page.evaluate(() => [localStorage.length, sessionStorage.length])).toEqual([0, 0]);
-  await page.goto('./#page=encrypt');
+  // Actually leave the editor; revisiting the same hash alone is not a navigation.
+  await page.getByRole('link', { name: 'Workspace', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Your repo has a private side.' })).toBeVisible();
+  await page.getByRole('link', { name: 'Add a file', exact: true }).click();
   await page.getByRole('button', { name: 'Write a note' }).click();
   await expect(page.getByLabel('Private note')).toHaveValue('');
 });
