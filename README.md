@@ -23,9 +23,9 @@ your computer                       public GitHub                 GitVault stati
 
 The **landing page** is just Markdown that GitHub can render. It says the document is encrypted, contains a scannable PNG QR code and a link to the viewer, and lives beside the binary `.age` file. The QR encodes only a *public viewer URL*, never a key or password.
 
-The **browser viewer** fetches encrypted bytes from GitHub's public API and decrypts them locally. No clone, account, or server-side secret is required to *read* a file. The same viewer can browse public directories, open plaintext files, and locally encrypt a selected file for download.
+The **browser viewer** is an initial implementation designed to fetch encrypted bytes from GitHub's public API and decrypt them locally. No clone, account, or server-side secret is required to *read* a file. The same viewer can browse public directories, open plaintext files, and locally encrypt a selected file for download.
 
-The **local CLI** encrypts from a Git-ignored workspace, generates landing pages and QR codes, and can restore encrypted files after you clone the repo on another computer. Encryption happens **before commit**, not on push; Git history cannot forget plaintext you accidentally committed.
+The **local CLI** is an untested initial implementation that encrypts from a Git-ignored workspace, generates landing pages and QR codes, and can restore encrypted files after you clone the repo on another computer. Encryption happens **before commit**, not on push; Git history cannot forget plaintext you accidentally committed.
 
 ## A quick tour
 
@@ -38,7 +38,7 @@ The **local CLI** encrypts from a Git-ignored workspace, generates landing pages
 | Web `Encrypt` | Create and download an encrypted `.age` file locally | Prototype |
 | Password unlock | age scrypt passphrase | Prototype |
 | age identity unlock | X25519 / age identity string | Prototype |
-| Passkey unlock | WebAuthn PRF where authenticator and browser support it | Experimental |
+| Passkey unlock | WebAuthn PRF where authenticator and browser support it | Planned |
 | Permanent landing-page QR | Opens same encrypted file in mobile browser | Prototype |
 | Scan QR to unlock **desktop** from phone | Requires secure cross-device key exchange; QR login alone is insufficient | Planned |
 | In-browser editing / direct GitHub commits | Requires re-encryption and optional GitHub authorization | Planned |
