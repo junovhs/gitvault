@@ -1,26 +1,29 @@
 {
   "name": "gitvault",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
+  "engines": { "node": ">=22.16" },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
     "cli": "tsx src/cli.ts",
     "vault:encrypt": "tsx src/cli.ts encrypt"
   },
   "dependencies": {
-    "age-encryption": "^0.3.0",
-    "qrcode": "^1.5.4",
-    "yaml": "^2.5.1"
+    "age-encryption": "0.3.1",
+    "fflate": "0.8.2",
+    "qrcode": "1.5.4",
+    "yaml": "^2.8.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@types/qrcode": "^1.5.5",
+    "@types/qrcode": "1.5.5",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
-    "vite": "^6.0.0"
+    "typescript": "5.9.3",
+    "vite": "^6.4.0"
   }
 }
