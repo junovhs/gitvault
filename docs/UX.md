@@ -1,5 +1,11 @@
 # Product workflow
 
+> **Product experience proposal:** [Small surface and progressive disclosure](PRODUCT_SURFACE.md) · [Decision notes](PRODUCT_NOTES.md). This document describes the currently implemented mechanics; the unified multi-repository workspace and recipient-sharing UX are not implemented.
+
+## Default navigation on `product-surface`
+
+**Workspace** opens a known public GitHub repository; **Add a file** uses the existing local encryption workflow; **More** contains local-file opening, the encrypted-folder experiment, the passkey lab, and technical guidance. Old document locators and direct routes remain supported. No private documents or keys are remembered by this navigation.
+
 ## Creating a private document
 
 A user has a free public repository and wants a private document beside its code. They can either use the local CLI's ignored workspace or select the document in the browser.
