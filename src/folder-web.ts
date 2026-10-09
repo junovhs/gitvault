@@ -44,7 +44,7 @@ function layout(): void {
   cleanup(); controller.abort(); controller = new AbortController(); epoch++;
   app.replaceChildren();
   const top = el('div', '', 'topbar'); const inside = el('div', '', 'topbar-inner'); const brand = anchor('GitVault', './', 'brand'); brand.prepend(el('span', 'G', 'brand-mark'));
-  const nav = el('nav', '', 'nav'); nav.append(anchor('Regular viewer', './'), anchor('Open a folder', './folder.html'), anchor('Encrypt a folder', './folder.html#mode=encrypt'));
+  const nav = el('nav', '', 'nav'); nav.setAttribute('aria-label', 'Folder navigation'); nav.append(anchor('Workspace', './'), anchor('Open folder', './folder.html'), anchor('Add folder', './folder.html#mode=encrypt'));
   inside.append(brand, nav); top.append(inside); app.append(top);
   main = el('main', '', 'main'); status = el('p', '', 'status'); status.setAttribute('aria-live', 'polite'); main.append(status); app.append(main);
   const footer = el('footer', '', 'footer'); footer.append(el('span', 'One encrypted file. Internal filenames stay inside it.'), anchor('Folder format & limits', 'https://github.com/junovhs/gitvault/blob/main/docs/FOLDERS.md')); app.append(footer);
