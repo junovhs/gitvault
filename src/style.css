@@ -58,6 +58,8 @@ p { font-size: 14px; line-height: 1.75; margin: 9px 0 16px; }
 .text-link { display: inline-block; font-size: 13px; margin-top: 18px; }
 .tool-links { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; margin-top: 18px; }
 .tool-links .text-link { margin-top: 0; }
+.alternative-action { margin: 0 0 26px; }
+.alternative-action .text-link { margin-top: 0; }
 .toolbar .text-link { margin-top: 0; }
 .publish-options summary { font-size: 16px; line-height: 1.6; font-weight: 650; cursor: pointer; }
 .publish-options summary::marker { color: var(--accent); }
