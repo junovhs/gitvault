@@ -1,0 +1,45 @@
+import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { decrypt } from '../../src/crypto.js';
+
+test('virtual PRF authenticator encrypts, unlocks and leaves an independent recovery route', async ({ page, context }) => {
+  const session = await context.newCDPSession(page);
+  await session.send('WebAuthn.enable');
+  const { authenticatorId } = await session.send('WebAuthn.addVirtualAuthenticator', { options: {
+    protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true,
+    hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true, hasPrf: true,
+  } });
+  await page.goto('http://localhost:4173/gitvault/#page=passkeys');
+  await page.getByRole('button', { name: 'Create encryption passkey' }).click();
+  await expect(page.getByText('Passkey ready. PRF support was confirmed during creation.')).toBeVisible();
+  await page.getByRole('button', { name: 'Generate recovery key' }).click();
+  const recoveryDownload = page.waitForEvent('download'); await page.getByRole('button', { name: 'Download recovery key' }).click();
+  const recoveryFile = await recoveryDownload; const recovery = await readFile((await recoveryFile.path())!, 'utf8');
+  await page.getByLabel('I saved the recovery key outside my public repository.').check();
+  await page.getByLabel('Document for passkey encryption').setInputFiles({ name: 'passkey-note.md', mimeType: 'text/markdown', buffer: Buffer.from('# Passkey unlocked\nRecovery is independent.') });
+  await page.getByRole('button', { name: 'Encrypt with passkey + recovery' }).click();
+  const cipherDownload = page.waitForEvent('download'); await page.getByRole('button', { name: 'Download passkey-encrypted file' }).click();
+  const cipherFile = await cipherDownload; const ciphertext = await readFile((await cipherFile.path())!);
+  expect(new TextDecoder().decode(await decrypt(ciphertext, { identity: recovery }))).toBe('# Passkey unlocked\nRecovery is independent.');
+  await page.goto('http://localhost:4173/gitvault/#page=open');
+  await page.getByLabel('Choose an encrypted .age file').setInputFiles({ name: 'passkey-note.md.age', mimeType: 'application/octet-stream', buffer: ciphertext });
+  await page.getByRole('button', { name: 'Open on this device' }).click();
+  await page.getByLabel('Unlock method').selectOption('passkey');
+  await page.getByRole('button', { name: 'Unlock document', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Passkey unlocked' })).toBeVisible();
+  await session.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
+  // Loss of the authenticator must not prevent offline identity recovery.
+  expect(new TextDecoder().decode(await decrypt(ciphertext, { identity: recovery }))).toContain('Recovery is independent.');
+});
+
+test('authenticator without PRF cannot masquerade as an encryption-capable passkey', async ({ page, context }) => {
+  const session = await context.newCDPSession(page); await session.send('WebAuthn.enable');
+  await session.send('WebAuthn.addVirtualAuthenticator', { options: {
+    protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true,
+    hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true, hasPrf: false,
+  } });
+  await page.goto('http://localhost:4173/gitvault/#page=passkeys');
+  await page.getByRole('button', { name: 'Create encryption passkey' }).click();
+  await expect(page.getByRole('alert')).toContainText('PRF');
+  await expect(page.getByRole('button', { name: 'Download passkey-encrypted file' })).toHaveCount(0);
+});

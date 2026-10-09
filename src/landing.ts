@@ -15,7 +15,7 @@ export function landingPage(opts: { name: string; ciphertextFile: string; repo: 
     '',
     '### [Open in GitVault](' + url + ')',
     '',
-    'Open the viewer and unlock using the password or age identity used to encrypt this file.',
+    'Open the viewer and use the unlock method configured for this file: password, private age identity, or a supported encryption passkey. Not every method works for every file.',
     '',
     'Or scan to open the viewer **on your phone**:',
     '',
