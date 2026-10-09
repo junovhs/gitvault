@@ -261,14 +261,34 @@ function documentView(name: string, bytes: Uint8Array, privateFile: boolean): vo
   rememberCleanup(() => { editor.value = ''; source.textContent = ''; preview.replaceChildren(); content = null; });
 }
 function encryptScreen(initial?: File): void {
-  heading('CREATE A PRIVATE DOCUMENT', 'Lock it before you publish it.', 'Encrypt on this device. Download ciphertext, or a ready-to-commit bundle with its GitHub landing page and QR.');
+  heading('ADD SOMETHING PRIVATE', 'Start with a note or file.', 'Create something here or select a file. Encryption runs on this device; publishing remains an explicit download and Git commit.');
   const project = new URLSearchParams(location.hash.slice(1));
   const projectRepo = project.get('page') === 'encrypt' && validRepo(project.get('repo') || '') ? project.get('repo')! : '';
   const folderHref = './folder.html#' + new URLSearchParams({ mode: 'encrypt', ...(projectRepo ? { repo: projectRepo } : {}) }).toString();
   main.append(link('Adding a private folder instead? Hide its filenames, too', folderHref, 'text-link'));
   const grid = el('div', '', 'encrypt-grid');
-  const form = card('1. Choose a file & unlock method');
+  const form = card('1. Your private content');
+  const sourceTabs = el('div', '', 'tabs');
+  form.append(sourceTabs);
   const file = input(form, 'Original document', { type: 'file' });
+  const noteFields = el('div', '', 'note-fields');
+  const noteName = input(noteFields, 'Note filename (public if individually published)', { value: 'private-note.md' });
+  const noteLabel = el('label', 'Write your note', 'field');
+  const note = el('textarea', '', 'editor note-editor'); note.setAttribute('aria-label', 'Private note'); note.spellcheck = true;
+  noteLabel.append(note); noteFields.append(noteLabel);
+  noteFields.append(el('p', 'This draft is not saved. Leaving the page discards it. For sensitive filenames, use a concealed folder instead.', 'small muted'));
+  form.append(noteFields);
+  let sourceMode: 'file' | 'note' = 'file';
+  const fileButton = action('Choose a file', () => setSource('file'), 'tab');
+  const noteButton = action('Write a note', () => setSource('note'), 'tab');
+  function setSource(mode: 'file' | 'note'): void {
+    sourceMode = mode;
+    file.parentElement!.hidden = mode !== 'file'; noteFields.hidden = mode !== 'note';
+    fileButton.setAttribute('aria-pressed', String(mode === 'file'));
+    noteButton.setAttribute('aria-pressed', String(mode === 'note'));
+  }
+  sourceTabs.append(fileButton, noteButton);
+  setSource('file');
   if (initial) form.append(el('p', 'Using your edited copy: ' + initial.name, 'demo-note'));
   const method = select(form, 'Encryption method', [['passphrase', 'A password you remember'], ['recipient', 'An age public recipient']]);
   const secret = input(form, 'Password', { type: 'password', placeholder: 'A long, unique passphrase', autocomplete: 'new-password' });
@@ -288,7 +308,14 @@ function encryptScreen(initial?: File): void {
   const results = el('section', '', 'results');
   const version = generation;
   const perform = async (bundle: boolean) => {
-    const selected = file.files?.[0] || initial;
+    const selected = sourceMode === 'note' ? (() => {
+      if (!note.value.trim()) throw new Error('Write a note before encrypting.');
+      const candidate = noteName.value.trim();
+      if (!candidate) throw new Error('Give your note a filename.');
+      const name = candidate.endsWith('.md') ? candidate : candidate + '.md';
+      safeRelative(name);
+      return new File([encoder.encode(note.value)], name, { type: 'text/markdown' });
+    })() : file.files?.[0] || initial;
     if (!selected) throw new Error('Choose a document first.');
     safeRelative(selected.name);
     if (selected.size > MAX_PLAIN) throw new Error('Prototype limit: 16 MiB per original file.');
@@ -321,7 +348,7 @@ function encryptScreen(initial?: File): void {
   form.append(buttons);
   settings.append(action('Encrypt + create GitHub bundle', () => perform(true), 'secondary'));
   grid.append(form, settings); main.append(grid, results); securityNote(main);
-  rememberCleanup(() => { secret.value = ''; confirm.value = ''; file.value = ''; initial = undefined; });
+  rememberCleanup(() => { secret.value = ''; confirm.value = ''; file.value = ''; note.value = ''; noteName.value = ''; initial = undefined; });
 }
 function more(): void {
   heading('TOOLS & DETAILS', 'More, when you need it.', 'The everyday experience is files and folders. These tools are here when you need more control.');
