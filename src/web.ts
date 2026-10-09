@@ -145,8 +145,11 @@ async function browse(repo: string, dir: string, ref: string): Promise<void> {
   const entries = await fetchDirectory(repo, dir, ref, aborter.signal); if (version !== generation) return;
   notify('');
   const pane = card(dir || 'Repository root');
-  const toolbar = el('div', '', 'toolbar'); const filter = input(toolbar, 'Filter files', { placeholder: 'Find a file in this folder' });
-  const generatedLabel = el('label', '', 'check-label'); const generated = el('input'); generated.type = 'checkbox'; generatedLabel.append(generated, document.createTextNode('Show generated files')); toolbar.append(generatedLabel); pane.append(toolbar);
+  const toolbar = el('div', '', 'toolbar');
+  const filter = input(toolbar, 'Filter files', { placeholder: 'Find a file in this folder' });
+  const generatedLabel = el('label', '', 'check-label'); const generated = el('input'); generated.type = 'checkbox'; generatedLabel.append(generated, document.createTextNode('Show generated files')); toolbar.append(generatedLabel);
+  toolbar.append(link('Add a private file to this project', route({ page: 'encrypt', repo, ...(ref ? { ref } : {}) }), 'text-link'));
+  pane.append(toolbar);
   const list = el('div', '', 'file-list'); pane.append(list);
   const paint = () => {
     list.replaceChildren();
@@ -259,7 +262,7 @@ function documentView(name: string, bytes: Uint8Array, privateFile: boolean): vo
 }
 function encryptScreen(initial?: File): void {
   heading('CREATE A PRIVATE DOCUMENT', 'Lock it before you publish it.', 'Encrypt on this device. Download ciphertext, or a ready-to-commit bundle with its GitHub landing page and QR.');
-  main.append(link('Prefer a device passkey? Open the experimental passkey lab', route({ page: 'passkeys' }), 'text-link'));
+  main.append(link('Adding a private folder instead? Hide its filenames, too', './folder.html#mode=encrypt', 'text-link'));
   const grid = el('div', '', 'encrypt-grid');
   const form = card('1. Choose a file & unlock method');
   const file = input(form, 'Original document', { type: 'file' });
@@ -269,10 +272,15 @@ function encryptScreen(initial?: File): void {
   const confirm = input(form, 'Confirm password', { type: 'password', autocomplete: 'new-password' });
   method.addEventListener('change', () => { secret.type = method.value === 'recipient' ? 'text' : 'password'; confirm.parentElement!.hidden = method.value === 'recipient'; secret.placeholder = method.value === 'recipient' ? 'age1... public recipient (never a private identity)' : 'A long, unique passphrase'; secret.value = ''; confirm.value = ''; });
   form.append(el('p', 'Public ciphertext can be guessed against offline. Use a unique, randomly generated passphrase, not a reused login password.', 'small muted'));
-  const settings = card('2. Add a GitHub landing page', 'Optional for a standalone encrypted download. Required for the bundle.');
-  const repo = input(settings, 'Public repository', { placeholder: 'owner/repository' });
+  const settings = el('details', '', 'card publish-options');
+  settings.append(el('summary', 'Publish to GitHub (optional)', 'publish-summary'));
+  settings.append(el('p', 'Generate a GitHub-ready bundle containing only ciphertext and public landing assets.', 'muted'));
+  const fromProject = new URLSearchParams(location.hash.slice(1));
+  const initialRepo = fromProject.get('page') === 'encrypt' && validRepo(fromProject.get('repo') || '') ? fromProject.get('repo')! : '';
+  const repo = input(settings, 'Public repository', { placeholder: 'owner/repository', value: initialRepo });
+  if (initialRepo) settings.open = true;
   const output = input(settings, 'Generated folder in the repo', { value: 'private' });
-  const ref = input(settings, 'Branch or commit (optional)', { placeholder: 'Repository default' });
+  const ref = input(settings, 'Branch or commit (optional)', { placeholder: 'Repository default', value: initialRepo ? fromProject.get('ref') || '' : '' });
   const viewer = input(settings, 'Trusted viewer URL', { value: new URL(location.pathname, location.origin).href });
   settings.append(el('p', 'The ZIP contains only the encrypted file, its public Markdown landing page, and a QR image. Extract it into your repo and commit those files.', 'small muted'));
   const results = el('section', '', 'results');
@@ -307,8 +315,10 @@ function encryptScreen(initial?: File): void {
     results.append(el('p', 'Do not add the original document or password to your public repository.', 'security-note'));
     secret.value = ''; confirm.value = ''; notify('Ready to download. Only encrypted/public artifacts are in the bundle.');
   };
-  const buttons = el('div', '', 'toolbar'); buttons.append(action('Encrypt file', () => perform(false), 'primary'), action('Encrypt + create GitHub bundle', () => perform(true), 'secondary'));
-  form.append(buttons); grid.append(form, settings); main.append(grid, results); securityNote(main);
+  const buttons = el('div', '', 'toolbar'); buttons.append(action('Encrypt file', () => perform(false), 'primary'));
+  form.append(buttons);
+  settings.append(action('Encrypt + create GitHub bundle', () => perform(true), 'secondary'));
+  grid.append(form, settings); main.append(grid, results); securityNote(main);
   rememberCleanup(() => { secret.value = ''; confirm.value = ''; file.value = ''; initial = undefined; });
 }
 function more(): void {
