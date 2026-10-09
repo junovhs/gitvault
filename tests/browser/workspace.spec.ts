@@ -6,7 +6,7 @@ import { encrypt } from '../../src/crypto.js';
 test('repository browse opens a concealed folder in the same project context', async ({ page }) => {
   const identity = await generateIdentity();
   const recipient = await identityToRecipient(identity);
-  const plain = packFolder([{ path: 'plans/private-strategy.md', bytes: new TextEncoder().encode('# Project strategy\\nNot public.') }]);
+  const plain = packFolder([{ path: 'plans/private-strategy.md', bytes: new TextEncoder().encode('# Project strategy\nNot public.') }]);
   const ciphertext = await encrypt(plain, { recipient });
   plain.fill(0);
   await page.route('https://api.github.com/repos/example/repo/contents/**', async route => {
