@@ -1,9 +1,8 @@
 #!/usr/bin/env node
-import { readFile, writeFile, mkdir, readdir, lstat } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import QRCode from 'qrcode';
 import { encrypt, decrypt } from './crypto.js';
@@ -100,7 +99,7 @@ async function init() {
   await writeFile(configPath, YAML.stringify({ version: 1, repo, viewer: 'https://junovhs.github.io/gitvault/', source: '.gitvault/plain', output: 'private', mode: 'passphrase' }), { flag: 'wx' });
   const ignore = path.join(root, '.gitignore');
   const previous = fs.existsSync(ignore) ? await readFile(ignore, 'utf8') : '';
-  await writeFile(ignore, previous + (previous.endsWith('\\n') || !previous ? '' : '\\n') + '.gitvault/plain/\\n.gitvault/keys/\\n');
+  await writeFile(ignore, previous + (previous.endsWith('\n') || !previous ? '' : '\n') + '.gitvault/plain/\n.gitvault/keys/\n');
   await mkdir(path.join(root, '.gitvault/plain'), { recursive: true });
   console.log('Created .gitvault.yml and ignored .gitvault/plain/.');
 }
