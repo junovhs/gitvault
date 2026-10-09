@@ -50,7 +50,7 @@ test('project context follows Add file and Add folder; bundle controls are initi
   await expect(publishing).toHaveAttribute('open', '');
   await expect(page.getByLabel('Public repository', { exact: true })).toHaveValue('example/repo');
   await expect(page.getByLabel('Branch or commit (optional)', { exact: true })).toHaveValue('feature/private');
-  await page.getByRole('link', { name: /Adding a private folder instead/ }).click();
+  await page.getByRole('link', { name: /Add a private folder instead/ }).click();
   await expect(page).toHaveURL(/folder\.html#mode=encrypt/);
   await expect(page.getByLabel('Public repository for folder bundle')).toHaveValue('example/repo');
 });
