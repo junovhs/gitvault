@@ -1,28 +1,28 @@
-# Development progress
+# Development checkpoints
 
-This file distinguishes committed work from verified behavior. An unchecked item is not a working feature claim.
+## Verified checkpoint: October 9, 2026
 
-## Committed
+The first complete verification run passed on source commit `f23e96fd819dc2d45c83fa39472993a9ebb555d8`:
 
-- [x] Initial TypeScript CLI and static browser viewer.
-- [x] Product, configuration, architecture, security, and roadmap documentation.
-- [x] Initial encryption, path, and landing-page smoke tests.
-- [x] GitHub Actions workflow for installation, build, tests, and a production dependency audit.
+- TypeScript compilation and production Vite build.
+- Unit and disposable-Git-repository integration tests.
+- Standard age CLI interoperability, in both directions, including ASCII armor.
+- Production dependency audit at the configured high-severity threshold.
+- Chromium end-to-end tests: mobile layout, real worker password decryption, local key decryption, privacy-safe Markdown, editing/re-encryption, and ciphertext-only ZIP bundles.
+- Static build and browser screenshots uploaded as GitHub Actions artifacts.
 
-## Next verification and implementation priorities
+[Verification run](https://github.com/junovhs/gitvault/actions/runs/37995601097)
 
-- [ ] Install dependencies and confirm the actual age-encryption API and runtime requirements.
-- [ ] Run the build and tests; fix failures before claiming the prototype works.
-- [ ] Verify the GitHub Actions result.
-- [ ] Harden source/output path validation, symlink handling, and generated-file collisions.
-- [ ] Fix hook generation and make staging honor the configured output directory.
-- [ ] Test a complete disposable-repository encrypt, commit, clone, and decrypt workflow.
-- [ ] Improve the mobile viewer, loading states, unlock errors, and local file opening.
-- [ ] Add a clearly labeled public demo with no real secrets.
-- [ ] Add and verify static-site deployment separately from CI.
+The maintenance workflow separately verified and committed the dependency lockfile and public demo. All demo passwords and documents are intentionally public, not real credentials.
 
-## Release boundaries
+## Continuing work
 
-Password and age-identity support require successful interoperability tests. Passkeys and phone-to-desktop QR approval remain planned, not implemented. A permanent landing-page QR opens a public viewer URL; it does not carry a decryption secret.
+The current branch can be newer than the verified checkpoint above. The latest **Verify GitVault** run is authoritative for its own commit. A green build is not an independent security audit.
 
-The project remains an unreviewed prototype. Do not publish real credentials or rely on it as the only copy of sensitive information.
+- Experimental passkey integration must include an independent recovery route and explicit compatibility limits.
+- Deployment is gated on verification and a one-time Pages setting. It must not request an extra secret or pretend the site is live before it is deployed.
+- More tests are being added for resource exhaustion, stale browser state and filesystem safety.
+
+## Product boundaries
+
+No backend, login database or server-side decryption. No automatic GitHub write authorization in the viewer. A public landing-page QR is a link, not a decryption capability. Custom phone-to-desktop approval remains a separate future feature.
