@@ -12,13 +12,20 @@ These notes capture the **small surface, depth where you look** direction for th
 
 **No banner:** Removing the experimental-folder announcement keeps the default workflow focused. Direct folder, passkey and old URL routes remain supported.
 
-**No crypto rewrite:** Reorganization is UI- and documentation-first. Existing age recipients, workers, bounded reads, CLI hook protections, and explicit downloads are preserved.
+**Use existing crypto:** The new note editor and in-context project actions still call the original age encryption and download paths; there is no new ciphertext format or implicit network write.
+
+**Private note creation:** The Add screen can compose Markdown directly without requiring a preexisting file. Draft text remains in the open page until encryption/navigation; it isn't automatically saved. The note filename is visibly marked as public when published individually.
+
+**One visible repository list:** The existing public GitHub explorer now recognizes `.gvfolder.age` as an encrypted folder and links to the correct viewer, retaining project/branch context. Internal folder contents remain hidden until successful decryption; this is not a unified key or file format.
+
+**Progressive publishing:** GitHub bundle controls start collapsed for standalone notes/files, but expand and prefill the repository when users choose Add from a project. No authentication, token or background GitHub write was added.
 
 ## Tradeoffs
 
 | Choice | Benefit | Cost / honest boundary |
 | --- | --- | --- |
 | Manual public repository input | No account or token; simple mental model | No automatic “all your repos” workspace |
+| In-browser note drafting | No editor or file needed to start; local encryption path is reused | No autosave; leaving the page loses an unsaved draft |
 | Concealed-folder experiment via More | Hides sensitive internal filenames without polluting default UI | Whole container rewritten after every change; 128-file/8-MiB limits |
 | Existing single-file encryption | Small portable files; familiar GitHub landing pages | Public individual filenames and paths |
 | Age identity and password support | Interoperability and independent recovery | User must secure keys; no password-reset server |
