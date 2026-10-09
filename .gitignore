@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.gitvault/plain/
+.gitvault/keys/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
