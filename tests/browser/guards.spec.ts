@@ -59,7 +59,8 @@ test('GitHub rate limits leave local-file opening available', async ({ page }) =
   await page.route('https://api.github.com/**', route => route.fulfill({ status: 429, body: '{}' }));
   await page.goto('./#repo=example%2Frepo');
   await expect(page.getByRole('alert')).toContainText('limited');
-  await page.getByRole('link', { name: 'Open a file', exact: true }).click();
+  await page.getByRole('link', { name: 'More', exact: true }).click();
+  await page.getByRole('link', { name: 'Open an encrypted file', exact: true }).click();
   await expect(page.getByLabel('Choose an encrypted .age file')).toBeVisible();
 });
 
