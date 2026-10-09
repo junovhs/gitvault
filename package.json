@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.test.mjs",
+    "test": "tsx --test tests/*.test.ts",
     "cli": "tsx src/cli.ts",
     "vault:encrypt": "tsx src/cli.ts encrypt"
   },
