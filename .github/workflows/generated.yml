@@ -8,6 +8,7 @@ on:
       - scripts/commit-generated.mjs
       - .github/workflows/generated.yml
   workflow_dispatch:
+# Only this maintenance job can write the generated lockfile/demo. CI stays read-only.
 permissions:
   contents: write
 concurrency:
