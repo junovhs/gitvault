@@ -312,13 +312,17 @@ function more(): void {
   heading('TOOLS & DETAILS', 'More, when you need it.', 'The everyday experience is files and folders. These tools are here when you need more control.');
   const grid = el('div', '', 'hero-grid');
   const files = card('Files and folders', 'Open a downloaded file, or work with an encrypted folder whose internal filenames stay private.');
-  files.append(link('Open an encrypted file', route({ page: 'open' }), 'text-link'));
-  files.append(link('Open a concealed folder (experimental)', './folder.html', 'text-link'));
-  files.append(link('Create a concealed folder (experimental)', './folder.html#mode=encrypt', 'text-link'));
+  const fileLinks = el('div', '', 'tool-links');
+  fileLinks.append(link('Open an encrypted file', route({ page: 'open' }), 'text-link'));
+  fileLinks.append(link('Open a concealed folder (experimental)', './folder.html', 'text-link'));
+  fileLinks.append(link('Create a concealed folder (experimental)', './folder.html#mode=encrypt', 'text-link'));
+  files.append(fileLinks);
   const tools = card('Keys and guidance', 'Advanced unlock methods are optional. Keep an independent backup of any recovery key.');
-  tools.append(link('Passkey lab (experimental)', route({ page: 'passkeys' }), 'text-link'));
-  tools.append(link('How GitVault works', route({ page: 'about' }), 'text-link'));
-  tools.append(link('Security and limitations', 'https://github.com/junovhs/gitvault/blob/product-surface/docs/SECURITY.md', 'text-link'));
+  const toolLinks = el('div', '', 'tool-links');
+  toolLinks.append(link('Passkey lab (experimental)', route({ page: 'passkeys' }), 'text-link'));
+  toolLinks.append(link('How GitVault works', route({ page: 'about' }), 'text-link'));
+  toolLinks.append(link('Security and limitations', 'https://github.com/junovhs/gitvault/blob/main/docs/SECURITY.md', 'text-link'));
+  tools.append(toolLinks);
   grid.append(files, tools); main.append(grid); securityNote(main);
 }
 function about(): void {
