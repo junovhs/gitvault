@@ -24,16 +24,16 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Typecheck and build
         run: npm run build
-      - name: Install reference age CLI
+      - name: Install reference encryption and QR tools
         run: |
-          if ! command -v age; then
-            sudo apt-get update -qq
-            sudo apt-get install -y age
-          fi
-      - name: Unit, integration and age interoperability tests
+          sudo apt-get update -qq
+          sudo apt-get install -y age librsvg2-bin zbar-tools
+      - name: Unit, integration, age interoperability and QR decoding tests
         run: npm test
         env:
           GITVAULT_AGE_BINARY: age
+          GITVAULT_RSVG_BINARY: rsvg-convert
+          GITVAULT_ZBAR_BINARY: zbarimg
       - name: Audit all dependencies, including moderate issues
         run: npm audit --audit-level=moderate
       - name: Install Chromium
