@@ -20,13 +20,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci --no-audit --no-fund
-          else
-            npm install --no-audit --no-fund
-          fi
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
       - name: Typecheck and build
         run: npm run build
       - name: Install reference age CLI
@@ -39,13 +34,13 @@ jobs:
         run: npm test
         env:
           GITVAULT_AGE_BINARY: age
-      - name: Production dependency audit
-        run: npm audit --omit=dev --audit-level=high
-      - name: Install browser
+      - name: Audit production and development dependencies
+        run: npm audit --audit-level=high
+      - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Real browser tests and screenshots
+      - name: Full browser tests and screenshots
         run: npm run test:e2e
-      - name: Static website artifact
+      - name: Verified static website artifact
         uses: actions/upload-artifact@v4
         with:
           name: gitvault-static
@@ -56,6 +51,40 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: browser-evidence
+          path: |
+            screenshots/
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+  browser-compatibility:
+    name: compatibility-${{ matrix.browser }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Install browser engine
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Password and identity compatibility checks
+        run: npm run test:e2e
+        env:
+          GITVAULT_BROWSER: ${{ matrix.browser }}
+      - name: Compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-evidence-${{ matrix.browser }}
           path: |
             screenshots/
             playwright-report/
