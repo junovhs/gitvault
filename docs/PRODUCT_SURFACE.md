@@ -28,13 +28,13 @@ Keep private project notes, research, tentative business plans, and documents in
 
 | Primary destination | Purpose | What currently works |
 | --- | --- | --- |
-| **Workspace** | Open a known public GitHub repository and browse its public/encrypted entries | Manual `owner/repo` entry, demo link, branch/ref selection, repo viewer |
-| **Add a file** | Select and encrypt one local file for download or GitHub-ready bundle | Existing `#page=encrypt` route, unchanged crypto/publishing workflow |
+| **Workspace** | Open a known public GitHub repository and browse public files, encrypted documents and concealed-folder containers | Manual `owner/repo` entry, demo link, branch/ref selection, in-context Add action, folder-viewer routing |
+| **Add a file** | Write a new Markdown note or select a local file, then encrypt and explicitly download | Same `#page=encrypt` route and age encryption; GitHub bundle controls disclosed on demand; project destination can be prefilled |
 | **More** | Explicit secondary paths and information | Open local ciphertext, encrypted-folder experiment, passkey lab, how-it-works, security notes |
 
 The global experimental-folder announcement is gone. **More** is intentional progressive disclosure, not deprecation: direct links to the advanced routes are preserved. The regular `#page=open`, `#page=encrypt`, `#page=passkeys`, `#page=about`, existing GitHub locators, and `folder.html` links must continue to work.
 
-This branch does **not** invent an automatic repository list, account-based onboarding, a stored master key, automatic commits, or a merged folder/document file model. The workspace label is the desired mental model, while present behavior is still a **public repository browser**.
+This branch does **not** invent an automatic repository list, account-based onboarding, a stored master key, automatic commits, or a merged folder/document decryption format. Concealed folders **appear in the same repository browser** as encrypted documents but still use the separate, existing folder viewer. A private note is an in-memory draft until explicitly encrypted and downloaded. The workspace label is the desired mental model, while present behavior is still a **public repository browser**.
 
 ## Core journeys
 
@@ -46,13 +46,13 @@ This branch does **not** invent an automatic repository list, account-based onbo
 
 ### Add a private note
 
-1. Create or edit it inside the CLI's Git-ignored workspace, **or** select a file in the browser.
+1. Create or edit it inside the CLI's Git-ignored workspace, **or** use **Add a file → Write a note / Choose a file** in the browser. The note editor does not save a draft to browser storage.
 2. Encrypt locally. Inspect the generated encrypted file and optional public landing assets.
 3. With the CLI, stage only allowlisted generated artifacts and commit; with the browser, download the bundle and commit it manually.
 
 ### Keep even the name private
 
-Use the experimental encrypted-folder path from **More**. Its internal names and files are hidden inside one age ciphertext. The outer file, size, and Git history remain public; edits require re-encrypting the entire container. This is not a mounted or incrementally synchronized workspace.
+Select an encrypted folder from a project's repository browser, or use the experimental folder-creation path from **More** or from the add-file screen. Its internal names and files are hidden inside one age ciphertext. The outer file, size, and Git history remain public; edits require re-encrypting the entire container. This is not a mounted or incrementally synchronized workspace.
 
 ### Share deliberately (future)
 
@@ -75,7 +75,7 @@ Recovery is an exception: essential recovery decisions **must** remain explicit 
 ## Review criteria
 
 - A new user can explain the product as “a private side to my public project” without learning the file format.
-- The default interface has no more than three primary navigation choices.
+- The default interface has no more than three primary navigation choices; adding a note and finding a concealed folder require no new top-level page.
 - A README and an automated test show how to find every advanced feature.
 - Existing GitHub link and QR routes continue to work; no public URL contains a decryption secret.
 - No encrypted bytes, plaintext, recovery, filesystem safety, or remote-write behavior is weakened by the UI change.
