@@ -16,7 +16,7 @@ test('desktop and mobile home pages are usable without horizontal scrolling', as
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'screenshots/mobile-home.png', fullPage: true });
   await page.getByRole('link', { name: 'Add a file', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Lock it before you publish it.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Start with a note or file.' })).toBeVisible();
 });
 
 test('remote password unlock happens in a real browser worker and can be locked again', async ({ page }) => {
@@ -56,7 +56,7 @@ test('local identity unlock makes no GitHub requests and does not activate embed
   await page.getByLabel('Edit decrypted document').fill('# Edited locally\nNo upload.');
   await page.getByRole('button', { name: 'Encrypt edited copy' }).click();
   await page.getByLabel('Encryption method').selectOption('recipient');
-  await page.getByLabel('Password', { exact: true }).fill(recipient);
+  await page.getByLabel('Public age recipient', { exact: true }).fill(recipient);
   await page.getByRole('button', { name: 'Encrypt file', exact: true }).click();
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download encrypted file (.age)', exact: true }).click();
@@ -70,7 +70,7 @@ test('browser bundle contains only ciphertext and public landing assets', async 
   await page.goto('./#page=encrypt');
   await page.getByLabel('Original document').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Only inside ciphertext') });
   await page.getByLabel('Encryption method').selectOption('recipient');
-  await page.getByLabel('Password', { exact: true }).fill(recipient);
+  await page.getByLabel('Public age recipient', { exact: true }).fill(recipient);
   await page.locator('details.publish-options summary').click();
   await page.getByLabel('Public repository', { exact: true }).fill('example/repo');
   await page.getByRole('button', { name: 'Encrypt + create GitHub bundle' }).click();
