@@ -293,7 +293,14 @@ function encryptScreen(initial?: File): void {
   const method = select(form, 'Encryption method', [['passphrase', 'A password you remember'], ['recipient', 'An age public recipient']]);
   const secret = input(form, 'Password', { type: 'password', placeholder: 'A long, unique passphrase', autocomplete: 'new-password' });
   const confirm = input(form, 'Confirm password', { type: 'password', autocomplete: 'new-password' });
-  method.addEventListener('change', () => { secret.type = method.value === 'recipient' ? 'text' : 'password'; confirm.parentElement!.hidden = method.value === 'recipient'; secret.placeholder = method.value === 'recipient' ? 'age1... public recipient (never a private identity)' : 'A long, unique passphrase'; secret.value = ''; confirm.value = ''; });
+  method.addEventListener('change', () => {
+    const recipientMode = method.value === 'recipient';
+    secret.parentElement!.firstChild!.textContent = recipientMode ? 'Public age recipient' : 'Password';
+    secret.type = recipientMode ? 'text' : 'password';
+    confirm.parentElement!.hidden = recipientMode;
+    secret.placeholder = recipientMode ? 'age1... public recipient (never a private identity)' : 'A long, unique passphrase';
+    secret.value = ''; confirm.value = '';
+  });
   form.append(el('p', 'Public ciphertext can be guessed against offline. Use a unique, randomly generated passphrase, not a reused login password.', 'small muted'));
   const settings = el('details', '', 'card publish-options');
   settings.append(el('summary', 'Publish to GitHub (optional)', 'publish-summary'));
