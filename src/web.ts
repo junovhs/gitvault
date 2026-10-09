@@ -262,7 +262,10 @@ function documentView(name: string, bytes: Uint8Array, privateFile: boolean): vo
 }
 function encryptScreen(initial?: File): void {
   heading('CREATE A PRIVATE DOCUMENT', 'Lock it before you publish it.', 'Encrypt on this device. Download ciphertext, or a ready-to-commit bundle with its GitHub landing page and QR.');
-  main.append(link('Adding a private folder instead? Hide its filenames, too', './folder.html#mode=encrypt', 'text-link'));
+  const project = new URLSearchParams(location.hash.slice(1));
+  const projectRepo = project.get('page') === 'encrypt' && validRepo(project.get('repo') || '') ? project.get('repo')! : '';
+  const folderHref = './folder.html#' + new URLSearchParams({ mode: 'encrypt', ...(projectRepo ? { repo: projectRepo } : {}) }).toString();
+  main.append(link('Adding a private folder instead? Hide its filenames, too', folderHref, 'text-link'));
   const grid = el('div', '', 'encrypt-grid');
   const form = card('1. Choose a file & unlock method');
   const file = input(form, 'Original document', { type: 'file' });
@@ -275,12 +278,11 @@ function encryptScreen(initial?: File): void {
   const settings = el('details', '', 'card publish-options');
   settings.append(el('summary', 'Publish to GitHub (optional)', 'publish-summary'));
   settings.append(el('p', 'Generate a GitHub-ready bundle containing only ciphertext and public landing assets.', 'muted'));
-  const fromProject = new URLSearchParams(location.hash.slice(1));
-  const initialRepo = fromProject.get('page') === 'encrypt' && validRepo(fromProject.get('repo') || '') ? fromProject.get('repo')! : '';
+  const initialRepo = projectRepo;
   const repo = input(settings, 'Public repository', { placeholder: 'owner/repository', value: initialRepo });
   if (initialRepo) settings.open = true;
   const output = input(settings, 'Generated folder in the repo', { value: 'private' });
-  const ref = input(settings, 'Branch or commit (optional)', { placeholder: 'Repository default', value: initialRepo ? fromProject.get('ref') || '' : '' });
+  const ref = input(settings, 'Branch or commit (optional)', { placeholder: 'Repository default', value: initialRepo ? project.get('ref') || '' : '' });
   const viewer = input(settings, 'Trusted viewer URL', { value: new URL(location.pathname, location.origin).href });
   settings.append(el('p', 'The ZIP contains only the encrypted file, its public Markdown landing page, and a QR image. Extract it into your repo and commit those files.', 'small muted'));
   const results = el('section', '', 'results');
