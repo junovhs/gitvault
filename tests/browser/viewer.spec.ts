@@ -71,6 +71,7 @@ test('browser bundle contains only ciphertext and public landing assets', async 
   await page.getByLabel('Original document').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Only inside ciphertext') });
   await page.getByLabel('Encryption method').selectOption('recipient');
   await page.getByLabel('Password', { exact: true }).fill(recipient);
+  await page.locator('details.publish-options summary').click();
   await page.getByLabel('Public repository', { exact: true }).fill('example/repo');
   await page.getByRole('button', { name: 'Encrypt + create GitHub bundle' }).click();
   const downloaded = page.waitForEvent('download');
