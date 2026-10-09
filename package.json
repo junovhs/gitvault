@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
+  "bin": { "gitvault": "bin/gitvault.mjs" },
   "engines": { "node": ">=22.16" },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -12,8 +13,8 @@
     "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
     "test:e2e": "playwright test",
     "demo:generate": "tsx scripts/generate-demo.ts",
-    "cli": "tsx src/cli.ts",
-    "vault:encrypt": "tsx src/cli.ts encrypt"
+    "cli": "node bin/gitvault.mjs",
+    "vault:encrypt": "node bin/gitvault.mjs encrypt"
   },
   "dependencies": {
     "age-encryption": "0.3.1",

@@ -1,110 +1,176 @@
 # GitVault
 
-**Private files in public GitHub repositories.** GitVault is an open-source prototype for keeping encrypted documents next to public code, with friendly GitHub landing pages and a static browser viewer.
+**Public repo. Private side.**
 
-> **Status: early prototype, not security-audited.** Do not entrust production credentials or irreplaceable sensitive records to this project. No hosted site is live until GitHub Pages is enabled.
+Private documents beside public code: standard age encryption, automatically generated GitHub landing pages, a scannable QR, and a static viewer that unlocks files on your device.
 
-## The idea
+[![Verify GitVault](https://github.com/junovhs/gitvault/actions/workflows/ci.yml/badge.svg)](https://github.com/junovhs/gitvault/actions/workflows/ci.yml)
+
+[See the actual interface](docs/screenshots/README.md) · [Open the example GitHub landing page](examples/private/welcome.md) · [Security model](docs/SECURITY.md)
+
+![GitVault desktop interface](docs/screenshots/desktop-home.png)
+
+> **Working prototype, not security-audited software.** Automated tests cover the core workflow, but do not use this as your only copy of sensitive information or as a production credentials manager.
+
+## The idea, in one minute
 
 ```text
-your computer                       public GitHub                 GitVault static website
+your computer                      public GitHub                   any device
+
 .gitvault/plain/strategy.md
-        |                                 |                                |
-        +-- gitvault encrypt ------------> private/strategy.md          |
-              (before committing)         private/strategy.md.age        |
-                                          private/strategy.md.qr.png     |
-                                                  |                      |
-                                     click landing page -- unlock link ->|
+            |
+       gitvault encrypt
+            |
+            +--------------------> private/strategy.md
+                                   public landing page + QR ---------> viewer
+                                   private/strategy.md.age               |
+                                   encrypted contents -------------------+
                                                                          |
-                                                     fetch public .age <-+
-                                                     unlock in browser
-                                                     read locally
+                                                            unlock on your device
+                                                            read / edit / re-encrypt
 ```
 
-The **landing page** is just Markdown that GitHub can render. It says the document is encrypted, contains a scannable PNG QR code and a link to the viewer, and lives beside the binary `.age` file. The QR encodes only a *public viewer URL*, never a key or password.
+You write the original in a **Git-ignored workspace**. GitVault encrypts it **before committing**, then generates a readable Markdown landing page and QR beside the encrypted file. A week later, on another computer or phone, follow that page's link and unlock in the viewer. No clone is required for reading.
 
-The **browser viewer** is an initial implementation designed to fetch encrypted bytes from GitHub's public API and decrypt them locally. No clone, account, or server-side secret is required to *read* a file. The same viewer can browse public directories, open plaintext files, and locally encrypt a selected file for download.
+The permanent QR contains a **public viewer URL**, not a password or key. Scanning opens the viewer on the phone; it does not automatically unlock a laptop.
 
-The **local CLI** is an untested initial implementation that encrypts from a Git-ignored workspace, generates landing pages and QR codes, and can restore encrypted files after you clone the repo on another computer. Encryption happens **before commit**, not on push; Git history cannot forget plaintext you accidentally committed.
+## What is implemented
 
-## A quick tour
+| Feature | State |
+| --- | --- |
+| Password and age-key encryption/decryption | Implemented; tested in CLI and browser |
+| Generated GitHub Markdown landing pages and SVG QR codes | Implemented |
+| Public repo explorer, branch/ref selection and file filtering | Implemented |
+| Open a local encrypted file without GitHub requests | Implemented |
+| Safe Markdown preview, local editing and re-encrypted downloads | Implemented |
+| Download ciphertext-only GitHub ZIP bundles | Implemented |
+| Ignored-workspace CLI, key generation, exact staging and local pre-commit hook | Implemented; integration-tested |
+| Passkey PRF with a separate age recovery key | Experimental; see [passkey compatibility and tests](docs/PASSKEYS.md) |
+| Static deployment, verified build artifacts and screenshot gallery | Implemented; Pages needs one-time repository setup |
+| Custom phone-to-desktop QR pairing, direct GitHub commits, encrypted folder archives | Not implemented |
 
-| Surface | What it does | State |
-| --- | --- | --- |
-| CLI `encrypt` | `.gitvault/plain/**` → `private/<path>.age`, Markdown landing page and QR PNG | Prototype |
-| CLI `decrypt` | Restore `.age` files into ignored workspace | Prototype |
-| CLI `hook install` | Local pre-commit encryption + staging of generated files | Prototype |
-| Web `Browse` | Navigate public repositories, view plaintext, unlock `.age` files | Prototype |
-| Web `Encrypt` | Create and download an encrypted `.age` file locally | Prototype |
-| Password unlock | age scrypt passphrase | Prototype |
-| age identity unlock | X25519 / age identity string | Prototype |
-| Passkey unlock | WebAuthn PRF where authenticator and browser support it | Planned |
-| Permanent landing-page QR | Opens same encrypted file in mobile browser | Prototype |
-| Scan QR to unlock **desktop** from phone | Requires secure cross-device key exchange; QR login alone is insufficient | Planned |
-| In-browser editing / direct GitHub commits | Requires re-encryption and optional GitHub authorization | Planned |
+Each file must have been encrypted for its chosen unlock method. A password-only file does not become passkey-enabled just because the viewer has a passkey option.
 
-**An important limitation:** not every file supports every unlock method automatically. The file must have been encrypted for that method. Passkey-encrypted files are bound to the website origin / supported credential; losing the credential can mean losing access. See [security model](docs/SECURITY.md).
+## Try the viewer
 
-## Developer setup
+Requires **Node.js 22.16+** for local development:
 
-Requires Node.js 20+, npm, and a Git working directory. This repository is intentionally plain TypeScript with **Vite as the only browser build step**; the deployed site is static and has no server or database.
-
-```bash
-npm install
-npm run dev          # local web viewer
-npm run build        # static dist/
-npm run typecheck
-npm test
+```sh
+git clone https://github.com/junovhs/gitvault.git
+cd gitvault
+npm ci
+npm run dev
 ```
 
-To try the CLI **in a separate disposable Git repository**, run `npm run cli -- init` from a GitVault checkout only if you're intentionally initializing that checkout. The current CLI commands use the current working directory as the target repository, and the prototype has not been packaged for npm distribution. To run it against another repo, from that repo:
+Open the Vite address with `/gitvault/` as its base path. Use **Try the public demo**, **Open a file**, or **Encrypt**. The intentionally public demo password is:
 
-```bash
-node /path/to/gitvault/node_modules/tsx/dist/cli.mjs /path/to/gitvault/src/cli.ts init
+```text
+gitvault-demo-not-a-secret
 ```
 
-Or invoke it with `npx tsx /path/to/gitvault/src/cli.ts init` if `tsx` is already installed in that environment.
+The hosted URL is configured as `https://junovhs.github.io/gitvault/`, but it is not live until GitHub Pages is enabled and deployed. In this repository, set **Settings > Pages > Build and deployment > Source: GitHub Actions**. The deployment workflow publishes only a verified current build. See [deployment](docs/DEPLOYMENT.md).
 
-Example config, generated by `init` or copied from [`.gitvault.example.yml`](.gitvault.example.yml):
+The deployed viewer is static: visitors do not install Node, build the app, sign in, or pay for a GitVault backend. It still makes ordinary public requests to GitHub when browsing a repository.
+
+## Use the CLI in your own public repository
+
+Install dependencies in the GitVault checkout, then optionally link its local command:
+
+```sh
+# Inside the GitVault checkout:
+npm ci
+npm link
+
+# Inside the repository whose private documents you want to protect:
+cd /path/to/your-public-repo
+gitvault init
+```
+
+No CLI compilation step is needed. To avoid a global command, use `node /absolute/path/to/gitvault/bin/gitvault.mjs` instead of `gitvault`.
+
+Edit the generated `.gitvault.yml`:
 
 ```yaml
 version: 1
-repo: your-user/your-public-repo
+repo: your-name/your-public-repo
 viewer: https://junovhs.github.io/gitvault/
 source: .gitvault/plain
 output: private
 mode: passphrase
+# Optional: ref: main
 ```
 
-```bash
+The viewer URL must be a trusted, deployed HTTPS origin, or localhost during development. Then:
+
+```sh
 mkdir -p .gitvault/plain
-printf '# Top secret\nOnly you should see this.\n' > .gitvault/plain/strategy.md
-export GITVAULT_PASSPHRASE='use a strong, unique, long passphrase'
-npx tsx /path/to/gitvault/src/cli.ts encrypt
-git add .gitvault.yml .gitignore private/
-git commit -m "Add encrypted strategy document"
+# Write your private documents in this ignored folder.
+# Do not create or commit a plaintext copy elsewhere in the public repo.
+gitvault encrypt --stage
+# Enter and confirm a strong password in the hidden terminal prompt.
+git add .gitvault.yml .gitignore
+git diff --cached --stat
+git commit -m "Add encrypted private documents"
+git push
 ```
 
-Or set `mode: recipient` and `recipient: age1...` in the config. A recipient is public; **never commit the private identity**. Encryption doesn't need the private identity for this mode. To decrypt, set `GITVAULT_IDENTITY` to the identity text (or `GITVAULT_PASSPHRASE` in password mode) and run the `decrypt` command. This recreates ignored local files without overwriting existing ones.
+For repeat encryption, use the same password unless deliberately rotating access. Noninteractive hooks accept `GITVAULT_PASSPHRASE` from the process environment; never put it in config, scripts or a public workflow.
 
-To install an opt-in, **local** pre-commit hook in an initialized repo, run `gitvault hook install` through the CLI. The hook requires a working `npm run vault:encrypt` script in the target repo; see [CLI setup](docs/CONFIG.md). It aborts the commit if encryption fails.
+To use public-key encryption, run `gitvault keygen`, back up the ignored identity file, and set `mode: recipient` plus the printed public `recipient: age1...` in the config. Encryption then needs only the public recipient, not the private key.
 
-For the hosted viewer, push this repo and enable **Settings → Pages → Source: GitHub Actions**. The workflow builds static files and publishes `dist/`. The default base URL is `https://junovhs.github.io/gitvault/`; it can be changed in `vite.config.ts` and each consuming repository's config.
+### Coming back on another computer
 
-## Security essentials
+For reading: **GitHub landing page → viewer → configured unlock method → read**.
 
-- **Never store plaintext under tracked paths.** Only work in `.gitvault/plain/`, which must be Git-ignored. The CLI checks this, refuses tracked plaintext, and refuses unsafe paths.
-- **Never put passwords or private identities in Git, URLs, QR codes, landing pages, GitHub Actions secrets for a public demo, or config files.**
-- GitHub still exposes repository history, encrypted blob sizes, file names, and public landing-page descriptions.
-- Browser decryption is local, but the code delivered by the website is part of the trust boundary. Use a trusted origin, review dependencies, and avoid installing untrusted browser extensions.
-- An attacker can attempt **offline guesses** against a password-encrypted public file. Use long, unique passphrases.
-- Plaintext accidentally committed previously is still recoverable from Git history. Encryption cannot undo that exposure.
-- `git commit --no-verify`, forced `git add`, or using another machine without the hook can bypass local protections. The ignored source path is the primary safeguard.
+For local editing:
 
-See [ARCHITECTURE](docs/ARCHITECTURE.md), [CONFIG](docs/CONFIG.md), [UX](docs/UX.md), [SECURITY](docs/SECURITY.md), and [ROADMAP](docs/ROADMAP.md).
+```sh
+git clone https://github.com/your-name/your-public-repo.git
+cd your-public-repo
+gitvault decrypt
+# Password mode prompts locally.
+# Key mode: set GITVAULT_IDENTITY_FILE to your backed-up identity file.
+# Edit restored documents under .gitvault/plain/.
+gitvault encrypt --stage
+git commit -m "Update encrypted documents"
+git push
+```
 
-## Philosophy
+`decrypt` restores only to the ignored workspace and refuses to overwrite existing local files. The CLI uses a public manifest to identify its artifacts. Browser-generated standalone bundles have no CLI manifest; use the browser for those or establish a separate CLI-managed output directory.
 
-Free public GitHub storage + strong, standard age encryption + a static, privacy-first UI. Keep encryption interoperable. Prefer simple defaults and *fail closed* around Git operations, rather than pretending a push-time transform can erase past commits.
+### Automatic local encryption
 
-License: MIT (see `LICENSE`).
+```sh
+gitvault hook install
+```
+
+The hook runs before a commit, stages only generated files, honors the configured output directory, and aborts when encryption fails. It does not overwrite existing hooks. It is local to each clone and references the GitVault installation used to create it. Reinstall it on every computer.
+
+**A hook is not a security boundary.** `--no-verify`, `git add -f`, earlier Git history, and plaintext outside the configured workspace are not magically protected. The ignored workspace is the primary safeguard.
+
+## How much of this is actually tested?
+
+CI installs locked dependencies, compiles TypeScript, builds the site, runs unit/integration tests, checks compatibility with the official age CLI, audits production dependencies at the configured threshold, and runs real Chromium browser tests. The browser tests exercise worker-based decryption, local editing/re-encryption, safe preview and ciphertext-only bundles. Passkey tests use virtual authenticators; they are not physical-phone certification.
+
+The workflow preserves the built site, browser reports and screenshots. See [development checkpoints](docs/DEVELOPMENT.md) and the current Actions result for the exact tested commit. A green test run is not an independent security audit.
+
+## Security boundaries
+
+GitHub can retain every old ciphertext and expose filenames, sizes and history. Password guesses happen offline. A compromised viewer host, dependency or browser extension can steal an entered key. Decrypted downloads, screenshots and editor backups are outside GitVault protection. Losing all unlock methods means losing access. Key rotation cannot revoke old copies already downloaded by someone else.
+
+The CLI rejects unsafe paths, symlinks/hardlinks, tracked plaintext, unowned output files and generated-name collisions. It preflights writes and uses per-file atomic replacement, but does not promise a whole-vault transaction or protection from a hostile process running as the same OS user.
+
+The current prototype is deliberately bounded: 16 MiB per original file, 24 MiB per downloaded ciphertext, and 64 MiB per CLI encryption operation. Large archives, automatic pruning and hidden filenames are future work.
+
+## Project map
+
+- [Configuration and commands](docs/CONFIG.md)
+- [Architecture and trust boundaries](docs/ARCHITECTURE.md)
+- [Security model](docs/SECURITY.md)
+- [Experimental passkeys and recovery](docs/PASSKEYS.md)
+- [Product workflow](docs/UX.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [Actual screenshots](docs/screenshots/README.md)
+
+TypeScript, Vite, standard age encryption. No React, database, tracking, custom cipher, or server-side decryption. MIT licensed.

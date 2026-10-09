@@ -1,8 +1,11 @@
+# Copy to .gitvault.yml in the repository whose documents you are protecting.
+# No password or private identity belongs in this file.
 version: 1
-repo: your-name/your-repo
+repo: your-name/your-public-repo
 viewer: https://junovhs.github.io/gitvault/
 source: .gitvault/plain
 output: private
 mode: passphrase
-# Alternatively: mode: recipient
-# recipient: age1PUBLICRECIPIENT
+# Optional: ref: main
+# For public-key mode, replace mode with recipient and add:
+# recipient: age1YOUR_PUBLIC_RECIPIENT
