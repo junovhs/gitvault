@@ -15,7 +15,7 @@ test('desktop and mobile home pages are usable without horizontal scrolling', as
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'screenshots/mobile-home.png', fullPage: true });
-  await page.getByRole('link', { name: 'Encrypt', exact: true }).click();
+  await page.getByRole('link', { name: 'Add a file', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Lock it before you publish it.' })).toBeVisible();
 });
 
