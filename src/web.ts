@@ -125,8 +125,10 @@ function home(): void {
   repo.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); try { go(); } catch (e) { notify((e as Error).message, true); } } });
   browser.append(link('Try the public demo', route({ repo: 'junovhs/gitvault', file: 'examples/private/welcome.md.age', ref: 'main', demo: '1' }), 'text-link'));
   const start = card('Your files, your keys', 'Use an existing encrypted file or create one to publish beside your project.');
-  start.append(link('Add a private file', route({ page: 'encrypt' }), 'button-link'));
-  start.append(link('Open a saved encrypted file', route({ page: 'open' }), 'text-link'));
+  const homeActions = el('div', '', 'tool-links');
+  homeActions.append(link('Add a private file', route({ page: 'encrypt' }), 'button-link'));
+  homeActions.append(link('Open a saved encrypted file', route({ page: 'open' }), 'text-link'));
+  start.append(homeActions);
   grid.append(browser, start); main.append(grid);
   main.append(el('p', 'GitVault reads public repository files from GitHub. It does not discover your repositories, store passwords, or automatically commit changes.', 'small muted'));
   securityNote(main);
@@ -265,9 +267,11 @@ function encryptScreen(initial?: File): void {
   const project = new URLSearchParams(location.hash.slice(1));
   const projectRepo = project.get('page') === 'encrypt' && validRepo(project.get('repo') || '') ? project.get('repo')! : '';
   const folderHref = './folder.html#' + new URLSearchParams({ mode: 'encrypt', ...(projectRepo ? { repo: projectRepo } : {}) }).toString();
-  main.append(link('Adding a private folder instead? Hide its filenames, too', folderHref, 'text-link'));
+  const alternative = el('div', '', 'alternative-action');
+  alternative.append(link('Add a private folder instead', folderHref, 'text-link'));
+  main.append(alternative);
   const grid = el('div', '', 'encrypt-grid');
-  const form = card('1. Your private content');
+  const form = card('Your private content');
   const sourceTabs = el('div', '', 'tabs');
   form.append(sourceTabs);
   const file = input(form, 'Original document', { type: 'file' });
