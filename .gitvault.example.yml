@@ -1,0 +1,8 @@
+version: 1
+repo: your-name/your-repo
+viewer: https://junovhs.github.io/gitvault/
+source: .gitvault/plain
+output: private
+mode: passphrase
+# Alternatively: mode: recipient
+# recipient: age1PUBLICRECIPIENT
