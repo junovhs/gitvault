@@ -28,10 +28,10 @@ test('virtual PRF authenticator encrypts, unlocks and leaves an independent reco
   const cipherFile = await cipherDownload; const ciphertext = await readFile((await cipherFile.path())!);
   expect(new TextDecoder().decode(await decrypt(ciphertext, { identity: recovery }))).toBe('# Passkey unlocked\nRecovery is independent.');
   await page.goto('http://localhost:4173/gitvault/#page=open');
-  await page.getByLabel('Choose an encrypted .age file').setInputFiles({ name: 'passkey-note.md.age', mimeType: 'application/octet-stream', buffer: ciphertext });
-  await page.getByRole('button', { name: 'Open on this device' }).click();
-  await page.getByLabel('Unlock method').selectOption('passkey');
-  await page.getByRole('button', { name: 'Unlock document', exact: true }).click();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Choose a file' }).click();
+  await (await chooser).setFiles({ name: 'passkey-note.md.age', mimeType: 'application/octet-stream', buffer: ciphertext });
+  await page.getByRole('button', { name: 'Unlock with passkey' }).click();
   await expect(page.getByRole('heading', { name: 'Passkey unlocked' })).toBeVisible();
   await session.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
   expect(new TextDecoder().decode(await decrypt(ciphertext, { identity: recovery }))).toContain('Recovery is independent.');

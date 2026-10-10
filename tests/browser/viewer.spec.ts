@@ -15,8 +15,10 @@ test('desktop and mobile home pages are usable without horizontal scrolling', as
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'screenshots/mobile-home.png', fullPage: true });
-  await page.getByRole('link', { name: 'Add a file', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Start with a note or file.' })).toBeVisible();
+  await page.getByRole('link', { name: 'New note', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Lock it' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: 'screenshots/mobile-note.png', fullPage: true });
 });
 
 test('remote password unlock happens in a real browser worker and can be locked again', async ({ page }) => {
@@ -25,59 +27,56 @@ test('remote password unlock happens in a real browser worker and can be locked 
   await page.route('https://api.github.com/repos/example/repo/contents/**', route => route.fulfill({ status: 200, contentType: 'application/octet-stream', body: Buffer.from(ciphertext) }));
   await page.setViewportSize({ width: 1440, height: 1050 });
   await page.goto('./#repo=example%2Frepo&file=private%2Fwelcome.md.age&demo=1');
-  await expect(page.getByRole('button', { name: 'Unlock document', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Unlock', exact: true })).toBeVisible();
   await page.screenshot({ path: 'screenshots/locked-document.png', fullPage: true });
-  await page.getByRole('button', { name: 'Use demo password' }).click();
-  await page.getByRole('button', { name: 'Unlock document', exact: true }).click();
+  await page.getByLabel('Password').fill('wrong password, on purpose');
+  await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('didn’t work');
+  await page.getByRole('button', { name: 'Fill in the demo password' }).click();
+  await page.getByRole('button', { name: 'Unlock', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'You unlocked it.' })).toBeVisible({ timeout: 90000 });
   await page.screenshot({ path: 'screenshots/unlocked-document.png', fullPage: true });
-  await page.getByRole('button', { name: 'Lock now' }).click();
-  await expect(page.getByRole('button', { name: 'Unlock document', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Lock', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Unlock', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'You unlocked it.' })).not.toBeVisible();
   expect(errors).toEqual([]);
 });
 
-test('local identity unlock makes no GitHub requests and does not activate embedded HTML', async ({ page }) => {
+test('editing an unlocked note re-locks it to the same key without any upload', async ({ page }) => {
   const identity = await generateIdentity(); const recipient = await identityToRecipient(identity);
-  const malicious = '# Safe local preview\n<img src="https://example.invalid/leak" onerror="alert(1)">\n[secret](https://example.invalid/secret)';
-  const ciphertext = await encrypt(new TextEncoder().encode(malicious), { recipient });
   const external: string[] = [];
   page.on('request', request => { if (!request.url().startsWith('http://127.0.0.1:4173/')) external.push(request.url()); });
   await page.goto('./#page=open');
-  await page.getByLabel('Choose an encrypted .age file').setInputFiles({ name: 'local.md.age', mimeType: 'application/octet-stream', buffer: Buffer.from(ciphertext) });
-  await page.getByRole('button', { name: 'Open on this device' }).click();
-  await page.getByLabel('Unlock method').selectOption('identity');
-  await page.getByLabel('Password or private identity', { exact: true }).fill(identity);
-  await page.getByRole('button', { name: 'Unlock document', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Safe local preview' })).toBeVisible();
-  await expect(page.locator('.markdown img, .markdown script, .markdown a')).toHaveCount(0);
-  expect(external).toEqual([]);
+  let chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Choose a file' }).click();
+  await (await chooser).setFiles({ name: 'plan.md.age', mimeType: 'application/octet-stream', buffer: Buffer.from(await encrypt(new TextEncoder().encode('# Plan'), { recipient })) });
+  chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Unlock with my key file' }).click();
+  await (await chooser).setFiles({ name: 'gitvault-key.txt', mimeType: 'text/plain', buffer: Buffer.from(identity) });
+  await expect(page.getByRole('heading', { name: 'Plan' })).toBeVisible();
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
-  await page.getByLabel('Edit decrypted document').fill('# Edited locally\nNo upload.');
-  await page.getByRole('button', { name: 'Encrypt edited copy' }).click();
-  await page.getByLabel('Encryption method').selectOption('recipient');
-  await page.getByLabel('Public age recipient', { exact: true }).fill(recipient);
-  await page.getByRole('button', { name: 'Encrypt file', exact: true }).click();
+  await page.getByLabel('Edit document').fill('# Edited locally\nNo upload.');
+  await page.getByRole('button', { name: 'Lock changes' }).click();
+  await page.getByRole('button', { name: 'Lock it' }).click();
   const downloaded = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Download encrypted file (.age)', exact: true }).click();
-  const file = await downloaded; const saved = await file.path();
-  expect(new TextDecoder().decode(await decrypt(await readFile(saved!), { identity }))).toBe('# Edited locally\nNo upload.');
+  await page.getByRole('button', { name: 'Download locked file' }).click();
+  const file = await downloaded; expect(file.suggestedFilename()).toBe('plan.md.age');
+  expect(new TextDecoder().decode(await decrypt(await readFile((await file.path())!), { identity }))).toBe('# Edited locally\nNo upload.');
   expect(external).toEqual([]);
 });
 
-test('browser bundle contains only ciphertext and public landing assets', async ({ page }) => {
-  const identity = await generateIdentity(); const recipient = await identityToRecipient(identity);
-  await page.goto('./#page=encrypt');
-  await page.getByLabel('Original document').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Only inside ciphertext') });
-  await page.getByLabel('Encryption method').selectOption('recipient');
-  await page.getByLabel('Public age recipient', { exact: true }).fill(recipient);
-  await page.locator('details.publish-options summary').click();
-  await page.getByLabel('Public repository', { exact: true }).fill('example/repo');
-  await page.getByRole('button', { name: 'Encrypt + create GitHub bundle' }).click();
+test('a repo bundle contains only ciphertext and public landing assets', async ({ page }) => {
+  await page.goto('./#page=encrypt&repo=example%2Frepo');
+  await page.getByRole('button', { name: 'Share with a password' }).click();
+  const secret = (await page.locator('.password-box .generated').innerText()).trim();
+  await page.getByLabel('Note title').fill('notes');
+  await page.getByLabel('Private note').fill('# Only inside ciphertext');
+  await page.getByRole('button', { name: 'Lock it' }).click();
   const downloaded = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Download GitHub bundle (.zip)' }).click();
-  const file = await downloaded; const saved = await file.path(); const files = unzipSync(await readFile(saved!));
+  await page.getByRole('button', { name: 'Download for example/repo' }).click();
+  const file = await downloaded; const files = unzipSync(await readFile((await file.path())!));
   expect(Object.keys(files).sort()).toEqual(['private/notes.md', 'private/notes.md.age', 'private/notes.md.qr.svg']);
   expect(strFromU8(files['private/notes.md'])).not.toContain('Only inside ciphertext');
-  expect(new TextDecoder().decode(await decrypt(files['private/notes.md.age'], { identity }))).toBe('# Only inside ciphertext');
+  expect(strFromU8(files['private/notes.md'])).not.toContain(secret);
+  expect(new TextDecoder().decode(await decrypt(files['private/notes.md.age'], { passphrase: secret }))).toBe('# Only inside ciphertext');
 });

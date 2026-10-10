@@ -7,7 +7,7 @@ scope.onmessage = async (event) => {
     const bytes = request.kind === 'encrypt' ? await encrypt(request.bytes, request.secret) : await decrypt(request.bytes, request.secret);
     scope.postMessage({ bytes }, [bytes.buffer as ArrayBuffer]);
   } catch {
-    scope.postMessage({ error: request.kind === 'decrypt' ? 'Could not unlock this file. Check the password or private identity; the file may also be damaged or use another encryption method.' : 'Encryption failed. Check the public recipient or password.' });
+    scope.postMessage({ error: request.kind === 'decrypt' ? 'That didn\u2019t unlock it. Check the password or key; the file may also be damaged.' : 'Locking failed. Check the public key or password.' });
   } finally {
     request.bytes.fill(0);
   }

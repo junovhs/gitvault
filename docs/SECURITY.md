@@ -34,6 +34,9 @@ Git hooks are local and bypassable. They cannot protect plaintext elsewhere in t
 
 ## Passkeys and recovery
 
+**Your key.** The viewer can hold one personal age identity. Its private half exists only in tab memory while unlocked. `localStorage` keeps your public key, recently opened public repository names, and, for each phone or device you add, the identity encrypted to that passkey's PRF output (the envelope cannot be opened without that authenticator). Anyone with access to this browser profile can see that a key exists and which repositories you opened, but cannot read files without an approval from the authenticator or the key file. Setup requires handing back the downloaded key file before the key is used. **Forget my key on this device** removes everything stored.
+
+
 Passkey encryption is experimental WebAuthn PRF, not ordinary passkey login. The lab requires a separate age recovery identity and verifies that it decrypts a copy before publishing ciphertext. A downloaded recovery key must be saved privately; the app cannot verify your offline backup merely because a download was requested.
 
 Passkeys are hostname-scoped, not path/repository-scoped. GitHub Pages projects on one hostname share that scope. Trust the entire host. Device/provider compatibility, synchronization and cross-device PRF availability need separate testing. Virtual-authenticator tests are not physical iPhone or Android certification. See [PASSKEYS](PASSKEYS.md).

@@ -1,11 +1,13 @@
 import { fetchBytes, fetchDirectory, MAX_DOWNLOAD } from './github.js';
 import { runCrypto, cancelCrypto } from './crypto-client.js';
+import { lockKinds } from './crypto.js';
 import { renderMarkdown } from './markdown.js';
-import { safeRelative, validRepo, viewerUrl } from './locator.js';
+import { parseRepoInput, safeRelative, validRepo, viewerUrl } from './locator.js';
 import { createBundle } from './bundle.js';
 import { decryptWithPasskey } from './passkeys.js';
 import { renderPasskeyLab } from './passkey-lab.js';
 import { workspaceItem } from './workspace.js';
+import * as key from './key.js';
 import './style.css';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -13,6 +15,8 @@ const decoder = new TextDecoder('utf-8', { fatal: true });
 const encoder = new TextEncoder();
 const DEMO_PASSWORD = 'gitvault-demo-not-a-secret';
 const MAX_PLAIN = 16 * 1024 * 1024;
+const MAX_KEY_FILE = 16384;
+const RECENT = 'gitvault.recent.v1';
 let generation = 0;
 let aborter = new AbortController();
 let cleaners: Array<() => void> = [];
@@ -20,6 +24,9 @@ let status: HTMLParagraphElement;
 let main: HTMLElement;
 let currentPlain: Uint8Array | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | undefined;
+let keyIdleTimer: ReturnType<typeof setTimeout> | undefined;
+/** A page can claim dropped files (e.g. key setup); otherwise drops open locked files or unlock your key. */
+let dropHandler: ((file: File) => Promise<void>) | null = null;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, text = '', className = ''): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -35,34 +42,23 @@ function notify(text: string, error = false): void {
   status.textContent = text; status.className = 'status' + (error ? ' error' : '');
   status.setAttribute('role', error ? 'alert' : 'status');
 }
+function message(error: unknown): string { return error instanceof Error ? error.message : 'Something went wrong.'; }
 function action(label: string, fn: () => void | Promise<void>, className = ''): HTMLButtonElement {
   const b = el('button', label, className); b.type = 'button';
   b.addEventListener('click', async () => {
     const version = generation;
     b.disabled = true;
-    try { await fn(); } catch (error) { if (version === generation) notify(error instanceof Error ? error.message : 'Something went wrong.', true); }
+    try { await fn(); } catch (error) { if (version === generation) notify(cancelled(error) ? 'Cancelled. Nothing was unlocked.' : message(error), true); }
     finally { if (b.isConnected) b.disabled = false; }
   });
   return b;
 }
+function cancelled(error: unknown): boolean { return error instanceof DOMException && (error.name === 'NotAllowedError' || error.name === 'AbortError'); }
 function input(parent: HTMLElement, title: string, options: { type?: string; placeholder?: string; value?: string; autocomplete?: string } = {}): HTMLInputElement {
   const label = el('label', title, 'field');
   const field = el('input'); field.type = options.type || 'text'; field.placeholder = options.placeholder || ''; field.value = options.value || '';
   field.autocomplete = (options.autocomplete || 'off') as AutoFill; field.spellcheck = false;
   label.append(field); parent.append(label); return field;
-}
-function select(parent: HTMLElement, title: string, items: Array<[string, string]>): HTMLSelectElement {
-  const label = el('label', title, 'field'); const field = el('select');
-  for (const [value, text] of items) { const option = el('option', text); option.value = value; field.append(option); }
-  label.append(field); parent.append(label); return field;
-}
-function card(title: string, description?: string): HTMLElement {
-  const section = el('section', '', 'card'); section.append(el('h2', title));
-  if (description) section.append(el('p', description, 'muted')); return section;
-}
-function heading(kicker: string, title: string, description: string): void {
-  const header = el('header', '', 'page-heading'); header.append(el('p', kicker, 'eyebrow'), el('h1', title), el('p', description, 'lead')); main.append(header);
-  document.title = title + ' | GitVault';
 }
 function size(bytes: number): string { return bytes < 1024 ? bytes + ' B' : bytes < 1048576 ? (bytes / 1024).toFixed(1) + ' KB' : (bytes / 1048576).toFixed(1) + ' MB'; }
 function download(name: string, bytes: Uint8Array, mime = 'application/octet-stream'): void {
@@ -70,30 +66,58 @@ function download(name: string, bytes: Uint8Array, mime = 'application/octet-str
   const a = link('', url); a.download = name.replace(/[\\/\x00-\x1f]/g, '_'); document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+function pickFile(accept: string): Promise<File | null> {
+  return new Promise(resolve => {
+    const picker = el('input'); picker.type = 'file'; picker.accept = accept; picker.hidden = true;
+    picker.addEventListener('change', () => { resolve(picker.files?.[0] ?? null); picker.remove(); });
+    picker.addEventListener('cancel', () => { resolve(null); picker.remove(); });
+    document.body.append(picker); picker.click();
+  });
+}
+async function readKeyFile(file: File): Promise<string> {
+  if (file.size > MAX_KEY_FILE) throw new Error('That is too big to be a key file.');
+  return file.text();
+}
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, reducedMotion() ? 0 : ms));
+
+const LOCK_SVG = '<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path class="shackle" d="M21 29v-9a11 11 0 0 1 22 0v9" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"/><rect class="body" x="12" y="28" width="40" height="29" rx="9"/><circle class="keyhole" cx="32" cy="41" r="4"/><rect class="keyhole" x="30.2" y="42" width="3.6" height="7" rx="1.8"/></svg>';
+function lockIcon(className: string, open = false): HTMLElement {
+  const d = el('div', '', 'lock ' + className + (open ? ' open' : '')); d.innerHTML = LOCK_SVG; return d;
+}
+
 function clearPrivate(): void {
   cancelCrypto();
   if (currentPlain) currentPlain.fill(0);
   currentPlain = null;
   clearTimeout(idleTimer);
+  dropHandler = null;
   for (const cleanup of cleaners.splice(0)) cleanup();
+}
+function keyState(): 'none' | 'locked' | 'open' { return !key.loadKey() ? 'none' : key.isUnlocked() ? 'open' : 'locked'; }
+function keyChip(): HTMLAnchorElement {
+  const state = keyState();
+  const a = link('', route({ page: 'key' }), 'key-chip'); a.id = 'key-chip'; a.dataset.state = state;
+  a.append(lockIcon('mini', state === 'open'), el('span', state === 'none' ? 'Get your key' : state === 'open' ? 'Unlocked' : 'Locked'));
+  a.setAttribute('aria-label', state === 'none' ? 'Get your key' : state === 'open' ? 'Your key is unlocked' : 'Your key is locked');
+  return a;
 }
 function shell(active: string): void {
   clearPrivate(); aborter.abort(); aborter = new AbortController(); generation++;
   app.replaceChildren();
   const top = el('div', '', 'topbar'); const inside = el('div', '', 'topbar-inner');
-  const brand = link('GitVault', '#', 'brand'); brand.prepend(el('span', 'G', 'brand-mark'));
+  const brand = link('GitVault', '#', 'brand'); brand.prepend(lockIcon('brand-lock'));
   const nav = el('nav', '', 'nav'); nav.setAttribute('aria-label', 'Main navigation');
-  // Three clear choices; specialized tools and technical detail live under More.
-  for (const [text, page] of [['Workspace', ''], ['Add a file', 'encrypt'], ['More', 'more']]) {
-    const a = link(text, page ? route({ page }) : '#');
-    if (page === active || (page === 'more' && ['open', 'about', 'passkeys'].includes(active))) a.setAttribute('aria-current', 'page');
-    nav.append(a);
-  }
+  const write = link('New note', route({ page: 'encrypt' }), 'nav-write');
+  if (active === 'encrypt') write.setAttribute('aria-current', 'page');
+  nav.append(write, keyChip());
   inside.append(brand, nav); top.append(inside); app.append(top);
   main = el('main', '', 'main'); main.id = 'main'; app.append(main);
   status = el('p', '', 'status'); status.setAttribute('aria-live', 'polite'); main.append(status);
   const footer = el('footer', '', 'footer');
-  footer.append(el('span', 'No account. No tracking. No server-side decryption.'), link('Source & security model', 'https://github.com/junovhs/gitvault'));
+  const links = el('span', '', 'footer-links');
+  links.append(link('How it works', route({ page: 'about' })), link('More tools', route({ page: 'more' })), link('Security', 'https://github.com/junovhs/gitvault/blob/main/docs/SECURITY.md'));
+  footer.append(el('span', 'Unlocks happen on your device. No account, no tracking. Early software: keep your key file backed up.'), links);
   app.append(footer);
 }
 function rememberCleanup(fn: () => void): void { cleaners.push(fn); }
@@ -101,323 +125,533 @@ function armAutoLock(): void {
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => { if (currentPlain) void render(); }, 5 * 60 * 1000);
 }
-function securityNote(parent: HTMLElement): void {
-  parent.append(el('p', 'Early, unaudited software. Use test documents, not production credentials or irreplaceable secrets.', 'security-note'));
+function armKeyLock(): void {
+  clearTimeout(keyIdleTimer);
+  if (key.isUnlocked()) keyIdleTimer = setTimeout(() => key.lockKey(), 15 * 60 * 1000);
 }
-function chooseLocal(parent: HTMLElement): void {
-  const file = input(parent, 'Choose an encrypted .age file', { type: 'file' }); file.accept = '.age,.txt,application/octet-stream';
-  parent.append(action('Open on this device', async () => {
-    const selected = file.files?.[0]; if (!selected) throw new Error('Choose an encrypted file first.');
-    if (selected.size > MAX_DOWNLOAD) throw new Error('Prototype limit: 24 MiB per encrypted file.');
-    const version = generation; const bytes = new Uint8Array(await selected.arrayBuffer());
-    if (version !== generation) return;
-    shell('open'); await showEncrypted(selected.name, bytes);
-  }, 'primary'));
+key.onKeyChange(() => {
+  document.getElementById('key-chip')?.replaceWith(keyChip());
+  armKeyLock();
+});
+
+function recent(): string[] {
+  try { const list = JSON.parse(localStorage.getItem(RECENT) || '[]'); return Array.isArray(list) ? list.filter((r): r is string => typeof r === 'string' && validRepo(r)).slice(0, 5) : []; } catch { return []; }
 }
+function remember(repo: string): void { try { localStorage.setItem(RECENT, JSON.stringify([repo, ...recent().filter(r => r !== repo)].slice(0, 5))); } catch { /* storage may be unavailable */ } }
+
+/** The unlock-your-key buttons used everywhere: phone/device passkeys first, then the key file. */
+function keyButtons(parent: HTMLElement, onUnlocked: () => void | Promise<void>, primaryFile = false): void {
+  const stored = key.loadKey();
+  const seen = new Set<string>();
+  for (const unlocker of stored?.unlockers ?? []) {
+    if (seen.has(unlocker.kind)) continue; seen.add(unlocker.kind);
+    parent.append(action(unlocker.kind === 'phone' ? 'Unlock with my phone' : 'Unlock with this computer', async () => {
+      notify(unlocker.kind === 'phone' ? 'Scan the code with your phone, then approve with Face ID or fingerprint.' : 'Approve with Touch ID, Windows Hello or your device PIN.');
+      const options = stored!.unlockers.filter(u => u.kind === unlocker.kind);
+      let lastError: unknown;
+      for (const option of options) {
+        try { await key.unlockWithPasskey(option); notify('Your key is unlocked.'); await onUnlocked(); return; }
+        catch (error) { if (cancelled(error)) throw error; lastError = error; }
+      }
+      throw lastError;
+    }, 'primary big'));
+  }
+  parent.append(action(seen.size ? 'Use my key file instead' : 'Unlock with my key file', async () => {
+    const file = await pickFile('.txt,.key,text/plain'); if (!file) return;
+    await key.unlockWithRecovery(await readKeyFile(file)); notify('Your key is unlocked.'); await onUnlocked();
+  }, seen.size && !primaryFile ? 'quiet' : 'primary big'));
+}
+
 function home(): void {
-  heading('PUBLIC PROJECTS. PRIVATE THINKING.', 'Your repo has a private side.', 'Keep your private notes and public code together. Open a project or add an encrypted file, without creating an account.');
-  const grid = el('div', '', 'hero-grid');
-  const browser = card('Open a project', 'Browse a public GitHub repository and unlock encrypted documents when you need them.');
-  const repo = input(browser, 'GitHub repository', { placeholder: 'owner/repository' });
-  const ref = input(browser, 'Branch or commit (optional)', { placeholder: 'Uses the repository default branch' });
-  const go = () => { const value = repo.value.trim(); if (!validRepo(value)) throw new Error('Enter a repository as owner/name.'); location.hash = route({ repo: value, ...(ref.value ? { ref: ref.value } : {}) }); };
-  browser.append(action('Open project', go, 'primary full'));
-  repo.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); try { go(); } catch (e) { notify((e as Error).message, true); } } });
-  browser.append(link('Try the public demo', route({ repo: 'junovhs/gitvault', file: 'examples/private/welcome.md.age', ref: 'main', demo: '1' }), 'text-link'));
-  const start = card('Your files, your keys', 'Use an existing encrypted file or create one to publish beside your project.');
-  const homeActions = el('div', '', 'tool-links');
-  homeActions.append(link('Add a private file', route({ page: 'encrypt' }), 'button-link'));
-  homeActions.append(link('Open a saved encrypted file', route({ page: 'open' }), 'text-link'));
-  start.append(homeActions);
-  grid.append(browser, start); main.append(grid);
-  main.append(el('p', 'GitVault reads public repository files from GitHub. It does not discover your repositories, store passwords, or automatically commit changes.', 'small muted'));
-  securityNote(main);
+  document.title = 'GitVault | Your repo has a private side.';
+  const hero = el('section', '', 'hero');
+  hero.append(lockIcon('hero-lock'), el('h1', 'Your repo has a private side.'), el('p', 'Paste a GitHub repo. Unlock its secrets. That’s it.', 'lead'));
+  const bar = el('div', '', 'repo-bar');
+  const field = el('input'); field.placeholder = 'github.com/you/your-repo'; field.setAttribute('aria-label', 'GitHub repository'); field.autocomplete = 'off'; field.spellcheck = false; field.autocapitalize = 'off';
+  const go = () => {
+    const parsed = parseRepoInput(field.value);
+    if (!parsed) throw new Error('That doesn’t look like a GitHub repo. Try owner/name.');
+    location.hash = route({ repo: parsed.repo, ...(parsed.ref ? { ref: parsed.ref } : {}), ...(parsed.dir ? { dir: parsed.dir } : {}) });
+  };
+  field.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); try { go(); } catch (e) { notify(message(e), true); } } });
+  bar.append(field, action('Open', go, 'primary'));
+  hero.append(bar);
+  const chips = el('div', '', 'chips');
+  for (const repo of recent()) chips.append(link(repo, route({ repo }), 'chip recent'));
+  chips.append(link('Write a secret note', route({ page: 'encrypt' }), 'chip'), link('Try the demo', route({ repo: 'junovhs/gitvault', file: 'examples/private/welcome.md.age', ref: 'main', demo: '1' }), 'chip'));
+  hero.append(chips, el('p', 'Or drop a locked file anywhere on this page.', 'hint'));
+  main.append(hero);
+  field.focus();
 }
+
 function crumbs(repo: string, dir: string, ref: string): HTMLElement {
-  const row = el('nav', '', 'breadcrumbs'); row.setAttribute('aria-label', 'Repository path'); row.append(link(repo, route({ repo, ref })));
+  const row = el('nav', '', 'breadcrumbs'); row.setAttribute('aria-label', 'Repository path'); row.append(link(repo, route({ repo, ...(ref ? { ref } : {}) })));
   let current = '';
-  for (const part of dir.split('/').filter(Boolean)) { current += (current ? '/' : '') + part; row.append(el('span', '/'), link(part, route({ repo, ref, dir: current }))); }
+  for (const part of dir.split('/').filter(Boolean)) { current += (current ? '/' : '') + part; row.append(el('span', '/'), link(part, route({ repo, ...(ref ? { ref } : {}), dir: current }))); }
   return row;
 }
 async function browse(repo: string, dir: string, ref: string): Promise<void> {
-  if (!validRepo(repo)) throw new Error('Enter a repository as owner/name.'); if (dir) safeRelative(dir);
-  heading('PROJECT WORKSPACE', repo, 'Public code and locked documents together. Open a private folder to reveal its contents only after unlocking.');
+  if (!validRepo(repo)) throw new Error('That doesn’t look like a GitHub repo. Try owner/name.'); if (dir) safeRelative(dir);
+  document.title = repo + ' | GitVault';
   main.append(crumbs(repo, dir, ref));
-  const version = generation; notify('Loading repository files...');
+  const title = el('h1', '', 'repo-title'); const [owner, name] = repo.split('/');
+  title.append(el('span', owner + ' / ', 'owner'), document.createTextNode(name)); main.append(title);
+  const version = generation; notify('Opening ' + repo + '…');
   const entries = await fetchDirectory(repo, dir, ref, aborter.signal); if (version !== generation) return;
-  notify('');
-  const pane = card(dir || 'Repository root');
-  const toolbar = el('div', '', 'toolbar');
-  const filter = input(toolbar, 'Filter files', { placeholder: 'Find a file in this folder' });
-  const generatedLabel = el('label', '', 'check-label'); const generated = el('input'); generated.type = 'checkbox'; generatedLabel.append(generated, document.createTextNode('Show generated files')); toolbar.append(generatedLabel);
-  toolbar.append(link('Add a private file to this project', route({ page: 'encrypt', repo, ...(ref ? { ref } : {}) }), 'text-link'));
-  pane.append(toolbar);
-  const list = el('div', '', 'file-list'); pane.append(list);
-  const paint = () => {
+  notify(''); remember(repo);
+  const paths = new Set(entries.map(e => e.path));
+  const visible = entries.filter(e => (e.type === 'file' || e.type === 'dir') && !e.name.endsWith('.qr.svg') && e.name !== '.gitvault-manifest.json'
+    && !(e.type === 'file' && (paths.has(e.path + '.age') || (e.path.endsWith('.md') && paths.has(e.path.slice(0, -3) + '.age')))));
+  const items = visible.map(entry => ({ entry, item: workspaceItem(repo, ref, entry) }))
+    .sort((a, b) => Number(b.item.locked) - Number(a.item.locked) || Number(b.item.isFolder) - Number(a.item.isFolder) || a.item.label.localeCompare(b.item.label));
+  const locked = items.filter(i => i.item.locked).length;
+
+  const banner = el('section', '', 'unlock-banner');
+  const paintBanner = () => {
+    banner.replaceChildren(); banner.dataset.state = keyState();
+    const copy = el('div', '', 'banner-copy');
+    if (!locked) { copy.append(el('strong', 'No private files here yet.'), el('span', 'Add one and it will show up with a lock.')); banner.append(lockIcon('banner-lock'), copy, link('Add a secret note', route({ page: 'encrypt', repo, ...(ref ? { ref } : {}) }), 'button-link primary')); return; }
+    const open = key.isUnlocked();
+    banner.append(lockIcon('banner-lock', open));
+    copy.append(el('strong', open ? 'Your key is unlocked.' : locked + (locked === 1 ? ' private file' : ' private files') + ' here.'), el('span', open ? 'Tap any private file to read it.' : 'Unlock your key once, then open anything.'));
+    banner.append(copy);
+    if (!open) { const buttons = el('div', '', 'banner-actions'); keyButtons(buttons, () => { paintBanner(); paintList(); }); banner.append(buttons); }
+  };
+  const list = el('div', '', 'file-list');
+  const filter = el('input', '', 'filter'); filter.placeholder = 'Find a file'; filter.setAttribute('aria-label', 'Filter files'); filter.type = 'search';
+  const paintList = () => {
     list.replaceChildren();
-    const paths = new Set(entries.map(e => e.path));
-    const displayed = entries.filter(e => {
-      if (!e.name.toLowerCase().includes(filter.value.toLowerCase())) return false;
-      if (generated.checked) return true;
-      return !e.name.endsWith('.qr.svg') && e.name !== '.gitvault-manifest.json' && !(e.type === 'file' && (paths.has(e.path + '.age') || (e.path.endsWith('.md') && paths.has(e.path.slice(0, -3) + '.age'))));
-    }).sort((a, b) => Number(b.type === 'dir') - Number(a.type === 'dir') || a.name.localeCompare(b.name));
-    for (const entry of displayed) {
-      if (entry.type !== 'file' && entry.type !== 'dir') continue;
-      const item = workspaceItem(repo, ref, entry, generated.checked);
-      const a = link('', item.href, 'file-row');
-      a.append(el('span', item.isFolder ? '/' : item.locked ? '#' : '-', 'file-icon' + (item.locked ? ' locked' : '')));
+    const open = key.isUnlocked(); const query = filter.value.trim().toLowerCase();
+    for (const { entry, item } of items.filter(i => !query || i.item.label.toLowerCase().includes(query))) {
+      const a = link('', item.href, 'file-row' + (item.locked ? ' private' : ''));
+      a.append(item.locked ? lockIcon('row-lock', open) : el('span', item.isFolder ? '▸' : '•', 'file-icon'));
       const copy = el('span', '', 'file-copy');
-      copy.append(el('strong', item.label), el('span', item.detail));
-      a.append(copy, el('span', item.action || size(entry.size), item.locked ? 'badge' : 'muted'));
+      copy.append(el('strong', item.label), el('span', item.isFolder ? 'Folder' : item.locked ? (item.detail.startsWith('Private folder') ? 'Private folder' : 'Private') : 'Public · ' + size(entry.size)));
+      a.append(copy); if (item.locked) a.append(el('span', open ? 'Open' : 'Unlock', 'pill'));
       list.append(a);
     }
-    if (!list.childElementCount) list.append(el('p', 'No matching files in this folder.', 'empty'));
+    if (!list.childElementCount) list.append(el('p', query ? 'Nothing matches.' : 'This folder is empty.', 'empty'));
   };
-  filter.addEventListener('input', paint); generated.addEventListener('change', paint); paint(); main.append(pane);
-  main.append(el('p', 'This browser reads public GitHub data without a token. It does not clone, modify, or upload to the repository.', 'muted small'));
+  filter.addEventListener('input', paintList);
+  paintBanner(); paintList();
+  rememberCleanup(key.onKeyChange(() => { paintBanner(); paintList(); }));
+  main.append(banner); if (items.length > 12) main.append(filter); main.append(list);
+  if (locked) main.append(link('+ Add a secret note to this repo', route({ page: 'encrypt', repo, ...(ref ? { ref } : {}) }), 'add-link'));
 }
+
 async function showRemote(repo: string, file: string, ref: string, demo: boolean): Promise<void> {
-  safeRelative(file); if (!validRepo(repo)) throw new Error('Invalid repository');
+  safeRelative(file); if (!validRepo(repo)) throw new Error('That doesn’t look like a GitHub repo.');
   main.append(crumbs(repo, file.split('/').slice(0, -1).join('/'), ref));
-  notify('Fetching ' + file + ' from GitHub...'); const version = generation;
+  notify('Fetching ' + file.split('/').at(-1) + '…'); const version = generation;
   const bytes = await fetchBytes(repo, file, ref, aborter.signal); if (version !== generation) return;
   notify('');
   if (file.endsWith('.age')) await showEncrypted(file.split('/').at(-1)!, bytes, { repo, file, ref, demo });
-  else { heading('PUBLIC FILE', file.split('/').at(-1)!, 'Public content from GitHub. Nothing on this screen needed decryption.'); documentView(file.split('/').at(-1)!, bytes, false); }
+  else { document.title = file.split('/').at(-1)! + ' | GitVault'; documentView(file.split('/').at(-1)!, bytes, false); }
 }
 type Remote = { repo: string; file: string; ref: string; demo: boolean };
 async function showEncrypted(name: string, encrypted: Uint8Array, remote?: Remote): Promise<void> {
-  heading('ENCRYPTED DOCUMENT', name.replace(/\.age$/, ''), 'The file is public. What is inside is not.');
-  const grid = el('div', '', 'unlock-grid');
-  const box = card('Unlock on this device', 'Use the method configured when the file was encrypted. Secrets stay on this device.');
-  box.prepend(el('div', '#', 'lock-symbol'));
-  const method = select(box, 'Unlock method', [['passphrase', 'Password'], ['identity', 'Private age identity'], ['passkey', 'Passkey (experimental)']]);
-  const secret = input(box, 'Password or private identity', { type: 'password', autocomplete: 'current-password' });
-  const keyFile = input(box, 'Or choose an identity file', { type: 'file' }); keyFile.accept = '.txt,.key'; keyFile.parentElement!.hidden = true;
-  const show = el('label', '', 'check-label'); const visible = el('input'); visible.type = 'checkbox'; show.append(visible, document.createTextNode('Show secret')); visible.addEventListener('change', () => { secret.type = visible.checked ? 'text' : 'password'; }); box.append(show);
-  const hint = el('p', 'Approve the compatible passkey originally used to encrypt this file. A normal sign-in passkey cannot unlock an unrelated file.', 'small muted'); hint.hidden = true; box.append(hint);
-  const updateMethod = () => {
-    const passkey = method.value === 'passkey';
-    keyFile.parentElement!.hidden = method.value !== 'identity'; secret.parentElement!.hidden = passkey; show.hidden = passkey; hint.hidden = !passkey;
-    secret.value = ''; keyFile.value = ''; visible.checked = false; secret.type = 'password';
-  };
-  method.addEventListener('change', updateMethod);
-  if (remote?.demo) {
-    const banner = el('div', '', 'demo-note'); banner.append(el('strong', 'Public demonstration'), el('p', 'This sample is intentionally not secret. Its password is:'), el('code', DEMO_PASSWORD), action('Use demo password', () => { method.value = 'passphrase'; updateMethod(); secret.value = DEMO_PASSWORD; })); box.append(banner);
-  }
+  const title = name.replace(/\.age$/, ''); document.title = title + ' | GitVault';
+  const kinds = lockKinds(encrypted);
+  const stage = el('section', '', 'unlock-stage');
+  const lock = lockIcon('stage-lock');
+  const heading = el('h1', title); const lead = el('p', '', 'lead');
+  const actions = el('div', '', 'stage-actions');
+  stage.append(lock, heading, lead, actions); main.append(stage);
+  const lower = el('div', '', 'stage-footer');
+  lower.append(action('Download locked file', () => download(name, encrypted), 'quiet'));
+  if (remote) lower.append(link('Back to ' + remote.repo, route({ repo: remote.repo, ...(remote.ref ? { ref: remote.ref } : {}) }), 'quiet-link'));
+  main.append(lower);
   const version = generation;
-  box.append(action('Unlock document', async () => {
-    const chosen = method.value;
-    notify(chosen === 'passkey' ? 'Approve your encryption passkey in the device prompt.' : 'Unlocking locally. Password derivation can take a moment...');
-    let value = secret.value;
-    if (chosen === 'identity' && keyFile.files?.[0]) { if (keyFile.files[0].size > 16384) throw new Error('Identity file is unexpectedly large'); value = await keyFile.files[0].text(); }
-    if (chosen !== 'passkey' && !value) throw new Error('Enter the password or select a private identity.');
-    if (version !== generation) return;
-    try {
-      const bytes = chosen === 'passkey'
-        ? await decryptWithPasskey(encrypted)
-        : await runCrypto({ kind: 'decrypt', bytes: encrypted, secret: chosen === 'identity' ? { identity: value } : { passphrase: value } });
-      if (version !== generation) { bytes.fill(0); return; }
-      secret.value = ''; keyFile.value = ''; value = '';
-      grid.remove(); currentPlain = bytes; armAutoLock();
-      notify('Unlocked on this device. Lock when you are finished.');
-      documentView(name.replace(/\.age$/, ''), bytes, true);
-    } finally { value = ''; }
-  }, 'primary full'));
-  const info = card('A key, not an account.', 'GitVault cannot reset your password or recover a lost identity. Keep a secure backup.');
-  info.append(el('h3', 'On your phone?'), el('p', 'Scanning a landing-page QR opens this viewer on your phone. You still need the configured unlock method.'), el('h3', 'Passkeys are experimental'), el('p', 'Passkey-encrypted files need a compatible WebAuthn PRF credential on the same trusted hostname. The passkey lab also adds a separate recovery identity. Phone-to-desktop approval is not a custom feature in this build.'), link('Explore the passkey lab', route({ page: 'passkeys' })), el('p', 'For recovery, choose Private age identity and select your recovery key file.', 'small muted'));
-  grid.append(box, info); main.append(grid);
-  const lower = el('div', '', 'toolbar'); lower.append(action('Download encrypted file', () => download(name, encrypted), 'secondary'));
-  if (remote) lower.append(link('Browse this repository', route({ repo: remote.repo, ref: remote.ref }), 'button-link'));
-  main.append(lower); securityNote(main);
-  rememberCleanup(() => { secret.value = ''; keyFile.value = ''; encrypted.fill(0); });
+  const open = async (decrypt: () => Promise<Uint8Array>) => {
+    const bytes = await decrypt();
+    if (version !== generation) { bytes.fill(0); return; }
+    lock.classList.add('open'); notify('');
+    await pause(650);
+    if (version !== generation) { bytes.fill(0); return; }
+    stage.remove(); lower.remove(); currentPlain = bytes; armAutoLock();
+    documentView(title, bytes, true, remote);
+  };
+  const withIdentity = (identity: string) => open(() => runCrypto({ kind: 'decrypt', bytes: encrypted, secret: { identity } }));
+  const otherKeyFile = () => action('Use a different key file', async () => {
+    const file = await pickFile('.txt,.key,text/plain'); if (!file) return;
+    await withIdentity(key.parseIdentity(await readKeyFile(file)));
+  }, 'quiet');
+  let tried = false;
+  const paint = () => {
+    actions.replaceChildren();
+    if (kinds.has('key')) {
+      if (key.isUnlocked()) {
+        if (!tried) {
+          tried = true; lead.textContent = 'Opening with your key…';
+          withIdentity(key.unlockedIdentity()).catch(() => { if (version !== generation) return; lead.textContent = 'This file was locked with a different key.'; paint(); });
+          return;
+        }
+        actions.append(otherKeyFile());
+      } else {
+        lead.textContent = 'Locked with a key. Unlock your key to read it.';
+        keyButtons(actions, () => undefined, !key.loadKey());
+        if (!key.loadKey()) actions.append(el('p', 'Your key file is the gitvault-key.txt you saved when you made your key.', 'hint'));
+      }
+    }
+    if (kinds.has('password')) {
+      if (!kinds.has('key')) lead.textContent = 'Locked with a password.';
+      const row = el('div', '', 'password-row');
+      const secret = el('input'); secret.type = 'password'; secret.placeholder = 'Password'; secret.autocomplete = 'current-password'; secret.setAttribute('aria-label', 'Password');
+      const unlock = action('Unlock', async () => {
+        const value = secret.value; if (!value) { secret.focus(); throw new Error('Type the password first.'); }
+        notify('Unlocking… this takes a moment on purpose.');
+        try { await open(() => runCrypto({ kind: 'decrypt', bytes: encrypted, secret: { passphrase: value } })); }
+        catch { if (version === generation) { notify('That password didn’t work. Try again.', true); secret.select(); } }
+      }, 'primary big');
+      secret.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); unlock.click(); } });
+      row.append(secret, unlock); actions.append(row);
+      rememberCleanup(() => { secret.value = ''; });
+      if (remote?.demo) actions.append(action('Fill in the demo password', () => { secret.value = DEMO_PASSWORD; unlock.focus(); }, 'quiet'));
+      if (!kinds.has('key')) setTimeout(() => secret.focus(), 0);
+    }
+    if (kinds.has('passkey')) {
+      if (!kinds.has('key') && !kinds.has('password')) lead.textContent = 'Locked with a passkey.';
+      actions.append(action('Unlock with passkey', async () => { notify('Approve with your passkey.'); await open(() => decryptWithPasskey(encrypted)); }, 'primary big'));
+      if (!kinds.has('key')) actions.append(otherKeyFile());
+    }
+    if (!kinds.size) lead.textContent = 'GitVault doesn’t recognise this kind of lock. Download it and use the age command-line tool.';
+  };
+  paint();
+  rememberCleanup(key.onKeyChange(paint));
+  rememberCleanup(() => { encrypted.fill(0); });
 }
-function documentView(name: string, bytes: Uint8Array, privateFile: boolean): void {
-  const panel = card(privateFile ? 'Unlocked document' : 'File preview'); panel.classList.add('document-panel');
-  const toolbar = el('div', '', 'toolbar');
-  toolbar.append(el('span', privateFile ? 'LOCAL DECRYPTION' : 'PUBLIC FILE', 'badge'));
-  toolbar.append(action(privateFile ? 'Download plaintext' : 'Download file', () => { download(name, bytes); if (privateFile) notify('A plaintext copy was downloaded. It is outside GitVault protection.'); }, 'secondary'));
-  if (privateFile) toolbar.append(action('Lock now', async () => { await render(); }, 'secondary'));
-  panel.append(toolbar);
+
+function documentView(name: string, bytes: Uint8Array, privateFile: boolean, remote?: Remote): void {
+  const paper = el('article', '', 'paper' + (privateFile ? ' unlocked' : ''));
+  const toolbar = el('div', '', 'paper-bar');
+  const label = el('div', '', 'paper-title');
+  if (privateFile) label.append(lockIcon('mini', true));
+  label.append(el('span', name)); toolbar.append(label);
+  const tools = el('div', '', 'paper-tools'); toolbar.append(tools);
+  paper.append(toolbar);
   let content: string | null;
   try { content = decoder.decode(bytes); if (content.includes('\0')) content = null; } catch { content = null; }
-  if (content === null) { panel.append(el('p', 'This is a binary file. Download it to open in the appropriate application.')); main.append(panel); return; }
-  const tabs = el('div', '', 'tabs'); const preview = el('article', '', 'markdown'); const source = el('pre', '', 'source'); source.hidden = true;
-  const editor = el('textarea', '', 'editor'); editor.setAttribute('aria-label', 'Edit decrypted document'); editor.spellcheck = false; editor.hidden = true;
-  renderMarkdown(preview, content); source.textContent = content.slice(0, 256000); editor.value = content;
-  const setTab = (target: 'preview' | 'source' | 'edit') => {
-    preview.hidden = target !== 'preview'; source.hidden = target !== 'source'; editor.hidden = target !== 'edit';
-    if (target === 'preview') renderMarkdown(preview, editor.value);
-    if (target === 'source') source.textContent = editor.value.slice(0, 256000);
-  };
-  tabs.append(action('Preview', () => setTab('preview'), 'tab'), action('Source', () => setTab('source'), 'tab'));
+  const saveCopy = () => { download(name, bytes); if (privateFile) notify('An unlocked copy was saved to your device. It is no longer protected.'); };
+  if (content === null) {
+    tools.append(action(privateFile ? 'Save unlocked copy' : 'Download', saveCopy, 'quiet'));
+    if (privateFile) tools.append(action('Lock', async () => { await render(); }, 'primary'));
+    paper.append(el('p', 'This isn’t a text file. Save a copy to open it in another app.', 'empty'));
+    main.append(paper); return;
+  }
+  const preview = el('div', '', 'markdown');
+  const editor = el('textarea', '', 'editor'); editor.setAttribute('aria-label', 'Edit document'); editor.spellcheck = true; editor.hidden = true;
+  renderMarkdown(preview, content); editor.value = content;
   if (privateFile) {
-    tabs.append(action('Edit', () => setTab('edit'), 'tab'));
-    panel.append(action('Encrypt edited copy', async () => {
-      const draft = new File([encoder.encode(editor.value)], name, { type: 'application/octet-stream' });
-      shell('encrypt'); encryptScreen(draft);
-    }, 'primary'), el('p', 'Editing is local only. Saving opens encryption settings for a new encrypted copy; it never commits plaintext or uploads changes. Choose the new unlock method explicitly.', 'small muted'));
-  }
-  panel.append(tabs, preview, source, editor, el('p', 'Privacy-safe preview: HTML, images and external links are not activated.', 'small muted'));
-  main.append(panel);
-  rememberCleanup(() => { editor.value = ''; source.textContent = ''; preview.replaceChildren(); content = null; });
+    const edit = action('Edit', () => {
+      const editing = editor.hidden; editor.hidden = !editing; preview.hidden = editing;
+      if (editing) { edit.textContent = 'Done'; editor.focus(); } else { edit.textContent = 'Edit'; renderMarkdown(preview, editor.value); }
+      save.hidden = editor.value === content && !editing;
+    }, 'quiet');
+    const save = action('Lock changes', () => {
+      const draft = { name, text: editor.value, repo: remote?.repo, ref: remote?.ref, dir: remote?.file.split('/').slice(0, -1).join('/') };
+      shell('encrypt'); lockScreen(draft);
+    }, 'quiet'); save.hidden = true;
+    editor.addEventListener('input', () => { save.hidden = editor.value === content; });
+    tools.append(edit, save, action('Save unlocked copy', saveCopy, 'quiet'), action('Lock', async () => { await render(); }, 'primary'));
+  } else tools.append(action('Download', saveCopy, 'quiet'));
+  paper.append(preview, editor);
+  main.append(paper);
+  if (!privateFile) main.append(el('p', 'This file is public. Anyone can read it on GitHub.', 'hint center'));
+  rememberCleanup(() => { editor.value = ''; preview.replaceChildren(); content = null; });
 }
-function encryptScreen(initial?: File): void {
-  heading('ADD SOMETHING PRIVATE', 'Start with a note or file.', 'Create something here or select a file. Encryption runs on this device; publishing remains an explicit download and Git commit.');
-  const project = new URLSearchParams(location.hash.slice(1));
-  const projectRepo = project.get('page') === 'encrypt' && validRepo(project.get('repo') || '') ? project.get('repo')! : '';
-  const folderHref = './folder.html#' + new URLSearchParams({ mode: 'encrypt', ...(projectRepo ? { repo: projectRepo } : {}) }).toString();
-  const alternative = el('div', '', 'alternative-action');
-  alternative.append(link('Add a private folder instead', folderHref, 'text-link'));
-  main.append(alternative);
-  const grid = el('div', '', 'encrypt-grid');
-  const form = card('Your private content');
-  const sourceTabs = el('div', '', 'tabs');
-  form.append(sourceTabs);
-  const file = input(form, 'Original document', { type: 'file' });
-  const noteFields = el('div', '', 'note-fields');
-  const noteName = input(noteFields, 'Note filename (public if individually published)', { value: 'private-note.md' });
-  const noteLabel = el('label', 'Write your note', 'field');
-  const note = el('textarea', '', 'editor note-editor'); note.setAttribute('aria-label', 'Private note'); note.spellcheck = true;
-  noteLabel.append(note); noteFields.append(noteLabel);
-  noteFields.append(el('p', 'This draft is not saved. Leaving the page discards it. For sensitive filenames, use a concealed folder instead.', 'small muted'));
-  form.append(noteFields);
-  let sourceMode: 'file' | 'note' = 'file';
-  const fileButton = action('Choose a file', () => setSource('file'), 'tab');
-  const noteButton = action('Write a note', () => setSource('note'), 'tab');
-  function setSource(mode: 'file' | 'note'): void {
-    sourceMode = mode;
-    file.parentElement!.hidden = mode !== 'file'; noteFields.hidden = mode !== 'note';
-    fileButton.setAttribute('aria-pressed', String(mode === 'file'));
-    noteButton.setAttribute('aria-pressed', String(mode === 'note'));
+
+/** Strong, readable, randomly generated: 5 groups of 5 from a 32-symbol alphabet (125 bits, unbiased). */
+function generatePassword(): string {
+  const alphabet = 'abcdefghijkmnpqrstuvwxyz23456789'; const bytes = crypto.getRandomValues(new Uint8Array(25));
+  let out = ''; for (let i = 0; i < 25; i++) { out += alphabet[bytes[i] & 31]; if (i % 5 === 4 && i < 24) out += '-'; }
+  bytes.fill(0); return out;
+}
+function slug(title: string): string {
+  const base = title.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+  return (base || 'secret-note') + '.md';
+}
+type Draft = { name?: string; text?: string; repo?: string; ref?: string; dir?: string };
+function lockScreen(draft: Draft = {}): void {
+  document.title = 'New note | GitVault';
+  const params = new URLSearchParams(location.hash.slice(1));
+  const repoParam = params.get('page') === 'encrypt' && validRepo(params.get('repo') || '') ? params.get('repo')! : '';
+  const target = { repo: draft.repo || repoParam, ref: draft.ref ?? (repoParam ? params.get('ref') || '' : ''), dir: draft.dir || 'private' };
+  const sheet = el('section', '', 'note-sheet');
+  const nameField = el('input', '', 'note-title'); nameField.placeholder = 'Untitled secret'; nameField.setAttribute('aria-label', 'Note title'); nameField.autocomplete = 'off';
+  if (draft.name) nameField.value = draft.name.replace(/\.md$/, '');
+  const body = el('textarea', '', 'note-body'); body.placeholder = 'Write anything. Only you will be able to read it.'; body.setAttribute('aria-label', 'Private note'); body.value = draft.text ?? '';
+  let attached: File | null = null;
+  const attachedRow = el('div', '', 'attached'); attachedRow.hidden = true;
+  const attach = action('or lock a file instead', async () => {
+    const file = await pickFile(''); if (!file) return;
+    safeRelative(file.name); if (file.size > MAX_PLAIN) throw new Error('That file is over the 16 MB limit.');
+    attached = file; body.hidden = true; nameField.hidden = true;
+    attachedRow.replaceChildren(el('strong', file.name), el('span', size(file.size), 'hint'), action('Remove', () => { attached = null; body.hidden = false; nameField.hidden = false; attachedRow.hidden = true; attach.hidden = false; }, 'quiet'));
+    attachedRow.hidden = false; attach.hidden = true;
+  }, 'quiet small');
+  sheet.append(nameField, body, attachedRow, attach);
+
+  let mode: 'key' | 'password' = 'key';
+  const how = el('div', '', 'lock-with');
+  const seg = el('div', '', 'segmented'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'Lock with');
+  const mine = action('Only me', () => setMode('key'), 'seg'); const shared = action('Share with a password', () => setMode('password'), 'seg');
+  seg.append(mine, shared); how.append(seg);
+  const passwordBox = el('div', '', 'password-box'); passwordBox.hidden = true;
+  const generated = el('code', generatePassword(), 'generated');
+  const own = el('input'); own.type = 'password'; own.placeholder = 'Or type your own (16+ characters)'; own.setAttribute('aria-label', 'Your own password'); own.autocomplete = 'new-password';
+  const passwordTools = el('div', '', 'row');
+  passwordTools.append(action('Copy', async () => { await navigator.clipboard.writeText(generated.textContent || ''); notify('Password copied. Paste it somewhere safe.'); }, 'quiet'), action('New one', () => { generated.textContent = generatePassword(); }, 'quiet'));
+  passwordBox.append(el('span', 'Send this password separately to the person you share with:', 'hint'), generated, passwordTools, own);
+  how.append(passwordBox);
+  const keyHint = el('p', '', 'hint'); how.append(keyHint);
+  function setMode(next: 'key' | 'password'): void {
+    mode = next; mine.setAttribute('aria-pressed', String(next === 'key')); shared.setAttribute('aria-pressed', String(next === 'password'));
+    passwordBox.hidden = next !== 'password';
+    keyHint.textContent = next === 'key' ? (key.loadKey() ? 'Locked to your key. You can open it anywhere with your phone or key file.' : 'First time? We’ll make your key in a few seconds.') : '';
   }
-  sourceTabs.append(fileButton, noteButton);
-  setSource('file');
-  if (initial) form.append(el('p', 'Using your edited copy: ' + initial.name, 'demo-note'));
-  const method = select(form, 'Encryption method', [['passphrase', 'A password you remember'], ['recipient', 'An age public recipient']]);
-  const secret = input(form, 'Password', { type: 'password', placeholder: 'A long, unique passphrase', autocomplete: 'new-password' });
-  const confirm = input(form, 'Confirm password', { type: 'password', autocomplete: 'new-password' });
-  method.addEventListener('change', () => {
-    const recipientMode = method.value === 'recipient';
-    secret.parentElement!.firstChild!.textContent = recipientMode ? 'Public age recipient' : 'Password';
-    secret.type = recipientMode ? 'text' : 'password';
-    confirm.parentElement!.hidden = recipientMode;
-    secret.placeholder = recipientMode ? 'age1... public recipient (never a private identity)' : 'A long, unique passphrase';
-    secret.value = ''; confirm.value = '';
-  });
-  form.append(el('p', 'Public ciphertext can be guessed against offline. Use a unique, randomly generated passphrase, not a reused login password.', 'small muted'));
-  const settings = el('details', '', 'card publish-options');
-  settings.append(el('summary', 'Publish to GitHub (optional)', 'publish-summary'));
-  settings.append(el('p', 'Generate a GitHub-ready bundle containing only ciphertext and public landing assets.', 'muted'));
-  const initialRepo = projectRepo;
-  const repo = input(settings, 'Public repository', { placeholder: 'owner/repository', value: initialRepo });
-  if (initialRepo) settings.open = true;
-  const output = input(settings, 'Generated folder in the repo', { value: 'private' });
-  const ref = input(settings, 'Branch or commit (optional)', { placeholder: 'Repository default', value: initialRepo ? project.get('ref') || '' : '' });
-  const viewer = input(settings, 'Trusted viewer URL', { value: new URL(location.pathname, location.origin).href });
-  settings.append(el('p', 'The ZIP contains only the encrypted file, its public Markdown landing page, and a QR image. Extract it into your repo and commit those files.', 'small muted'));
-  const results = el('section', '', 'results');
+  setMode('key');
+
+  const where = el('details', '', 'where');
+  where.append(el('summary', target.repo ? 'Goes in ' + target.repo + ' / ' + target.dir : 'Put it in a repo (optional)'));
+  const repoField = input(where, 'Repository', { placeholder: 'owner/repo', value: target.repo });
+  const dirField = input(where, 'Folder in the repo', { value: target.dir });
+  sheet.append(how, where);
+  const lockButton = action('Lock it', () => perform(), 'primary huge');
+  sheet.append(lockButton);
+  const setup = el('section', '', 'setup-panel'); setup.hidden = true;
+  main.append(sheet, setup);
+  if (!draft.text) setTimeout(() => (draft.name ? body : nameField).focus(), 0);
+  rememberCleanup(() => { body.value = ''; own.value = ''; generated.textContent = ''; attached = null; });
+
   const version = generation;
-  const perform = async (bundle: boolean) => {
-    const selected = sourceMode === 'note' ? (() => {
-      if (!note.value.trim()) throw new Error('Write a note before encrypting.');
-      const candidate = noteName.value.trim();
-      if (!candidate) throw new Error('Give your note a filename.');
-      const name = candidate.endsWith('.md') ? candidate : candidate + '.md';
-      safeRelative(name);
-      return new File([encoder.encode(note.value)], name, { type: 'text/markdown' });
-    })() : file.files?.[0] || initial;
-    if (!selected) throw new Error('Choose a document first.');
-    safeRelative(selected.name);
-    if (selected.size > MAX_PLAIN) throw new Error('Prototype limit: 16 MiB per original file.');
-    if (method.value === 'passphrase' && (secret.value.length < 16 || secret.value !== confirm.value)) throw new Error('Use at least 16 characters and enter the same password twice.');
-    if (method.value === 'recipient' && !secret.value.trim().startsWith('age1')) throw new Error('Enter a public age recipient beginning age1.');
-    const options = { repo: repo.value.trim(), output: output.value, name: selected.name, viewer: viewer.value, ref: ref.value || undefined };
-    if (bundle) viewerUrl(options.viewer, options.repo, safeRelative(options.output) + '/' + selected.name + '.age', options.ref);
-    const mode = method.value; let entered = secret.value;
-    notify('Encrypting locally. Your file is not being uploaded...');
-    const plain = new Uint8Array(await selected.arrayBuffer());
-    let encrypted: Uint8Array;
-    try {
-      if (version !== generation) return;
-      encrypted = await runCrypto({ kind: 'encrypt', bytes: plain, secret: mode === 'recipient' ? { recipient: entered.trim() } : { passphrase: entered } });
-    } finally { plain.fill(0); entered = ''; }
-    if (version !== generation) { encrypted.fill(0); return; }
-    results.replaceChildren(el('p', 'Encrypted successfully. No plaintext was uploaded.', 'success-message'));
-    if (bundle) {
-      const packaged = await createBundle(encrypted, options);
-      if (version !== generation) return;
-      results.append(action('Download GitHub bundle (.zip)', () => download(selected.name + '.gitvault.zip', packaged.zip, 'application/zip'), 'primary'));
-      const details = el('details'); details.append(el('summary', 'Preview the generated landing page'), el('pre', packaged.landing)); results.append(details);
-      results.append(el('p', 'After committing the bundle to the configured repository:'), link('Open its viewer link', packaged.url, 'text-link'));
+  async function perform(): Promise<void> {
+    const file = attached ?? (() => {
+      if (!body.value.trim()) { body.focus(); throw new Error('Write something first.'); }
+      const keepName = draft.name && nameField.value === draft.name.replace(/\.md$/, '');
+      return new File([encoder.encode(body.value)], keepName ? draft.name! : slug(nameField.value), { type: 'text/markdown' });
+    })();
+    safeRelative(file.name);
+    const repo = parseRepoInput(repoField.value)?.repo ?? '';
+    if (repoField.value.trim() && !repo) throw new Error('That repo doesn’t look right. Use owner/name.');
+    let secret: { recipient: string } | { passphrase: string };
+    if (mode === 'key') {
+      const stored = key.loadKey();
+      if (!stored) { sheet.hidden = true; setup.hidden = false; setup.replaceChildren(); keySetup(setup, () => { setup.hidden = true; sheet.hidden = false; setMode('key'); void lockButton.click(); }); return; }
+      secret = { recipient: stored.recipient };
+    } else {
+      const chosen = own.value || generated.textContent || '';
+      if (own.value && own.value.length < 16) throw new Error('Use at least 16 characters, or use the generated password.');
+      secret = { passphrase: chosen };
     }
-    results.append(action('Download encrypted file (.age)', () => download(selected.name + '.age', encrypted), 'secondary'));
-    results.append(el('p', 'Do not add the original document or password to your public repository.', 'security-note'));
-    secret.value = ''; confirm.value = ''; notify('Ready to download. Only encrypted/public artifacts are in the bundle.');
-  };
-  const buttons = el('div', '', 'toolbar'); buttons.append(action('Encrypt file', () => perform(false), 'primary'));
-  form.append(buttons);
-  settings.append(action('Encrypt + create GitHub bundle', () => perform(true), 'secondary'));
-  grid.append(form, settings); main.append(grid, results); securityNote(main);
-  rememberCleanup(() => { secret.value = ''; confirm.value = ''; file.value = ''; note.value = ''; noteName.value = ''; initial = undefined; });
+    notify('Locking on this device…');
+    const plain = new Uint8Array(await file.arrayBuffer());
+    let encrypted: Uint8Array;
+    try { if (version !== generation) return; encrypted = await runCrypto({ kind: 'encrypt', bytes: plain, secret }); } finally { plain.fill(0); }
+    if (version !== generation) { encrypted.fill(0); return; }
+    const output = dirField.value.trim() || 'private';
+    const options = { repo, output, name: file.name, viewer: new URL(location.pathname, location.origin).href, ref: target.ref || undefined };
+    let bundle: Awaited<ReturnType<typeof createBundle>> | undefined;
+    if (repo) { viewerUrl(options.viewer, repo, safeRelative(output) + '/' + file.name + '.age', options.ref); bundle = await createBundle(encrypted, options); if (version !== generation) return; }
+    const sharedPassword = mode === 'password' ? (own.value ? '' : generated.textContent || '') : '';
+    own.value = ''; body.value = '';
+    sheet.remove(); notify('');
+    const done = el('section', '', 'done-stage');
+    const lock = lockIcon('stage-lock', true); done.append(lock, el('h1', 'Locked.'));
+    done.append(el('p', bundle ? 'Unzip this into ' + repo + ' and commit. It will open from GitHub, with a link and a QR code.' : 'Put this file in any repo. It opens right here, from anywhere.', 'lead'));
+    const buttons = el('div', '', 'stage-actions');
+    if (bundle) buttons.append(action('Download for ' + repo, () => download(file.name + '.gitvault.zip', bundle!.zip, 'application/zip'), 'primary big'));
+    buttons.append(action(bundle ? 'Just the locked file' : 'Download locked file', () => download(file.name + '.age', encrypted), bundle ? 'quiet' : 'primary big'));
+    done.append(buttons);
+    if (sharedPassword) { const box = el('div', '', 'password-box'); box.append(el('span', 'The password (send it separately, never in the repo):', 'hint'), el('code', sharedPassword, 'generated')); done.append(box); }
+    if (bundle) done.append(link('Where it will open', bundle.url, 'quiet-link'));
+    done.append(link('Write another', route({ page: 'encrypt', ...(repo ? { repo } : {}) }), 'quiet-link'));
+    main.append(done);
+    requestAnimationFrame(() => setTimeout(() => lock.classList.remove('open'), reducedMotion() ? 0 : 120));
+    rememberCleanup(() => { encrypted.fill(0); });
+  }
 }
+
+/** Make your key: save it, hand it back to prove it is saved, then optionally add your phone. */
+function keySetup(parent: HTMLElement, done: () => void): void {
+  const steps = el('ol', '', 'steps');
+  const step = (n: number, title: string) => { const li = el('li', '', 'step'); li.dataset.step = String(n); li.append(el('h2', title)); steps.append(li); return li; };
+  parent.append(lockIcon('stage-lock'), el('h1', 'Make your key.'), el('p', 'One key opens all your private files. Your phone can unlock it with Face ID.', 'lead'), steps);
+  const one = step(1, 'Save your key file');
+  const two = step(2, 'Drop it back here'); two.classList.add('waiting');
+  const three = step(3, 'Unlock with your phone'); three.classList.add('waiting');
+  let pending: key.PendingKey | null = null;
+  one.append(el('p', 'It’s your spare key. Keep it somewhere safe, like a password manager or a USB stick. Never put it in a repo.', 'hint'));
+  const make = action('Make my key', async () => {
+    pending = await key.createKey();
+    download('gitvault-key.txt', encoder.encode(pending.file), 'text/plain');
+    make.textContent = 'Download it again'; one.classList.add('done'); two.classList.remove('waiting');
+    notify('Saved gitvault-key.txt. Now drop it back in to prove you have it.');
+    dropHandler = confirm;
+  }, 'primary big');
+  one.append(make, action('I already have a key file', async () => {
+    const file = await pickFile('.txt,.key,text/plain'); if (!file) return;
+    await key.unlockWithRecovery(await readKeyFile(file)); finish12();
+  }, 'quiet'));
+  const confirm = async (file: File) => {
+    if (!pending) throw new Error('Make your key first.');
+    await key.confirmRecovery(pending, await readKeyFile(file)); finish12();
+  };
+  two.append(el('p', 'This proves your spare key really saved. Drag gitvault-key.txt onto this page, or choose it.', 'hint'));
+  two.append(action('Choose gitvault-key.txt', async () => { const file = await pickFile('.txt,.key,text/plain'); if (file) await confirm(file); }, 'primary big'));
+  const finish12 = () => {
+    pending = null; dropHandler = null;
+    one.classList.add('done'); two.classList.remove('waiting'); two.classList.add('done'); three.classList.remove('waiting');
+    notify('Your key is ready and unlocked.');
+    addPhone(three, done);
+  };
+  rememberCleanup(() => { pending = null; });
+}
+function addPhone(parent: HTMLElement, done: () => void): void {
+  parent.append(el('p', 'Next time, scan a code with your phone and approve with Face ID or your fingerprint. Needs iPhone iOS 18.4+ or Android with Google Password Manager.', 'hint'));
+  const finished = (text: string) => { parent.classList.add('done'); done(); notify(text); };
+  if (key.passkeysSupported()) {
+    parent.append(action('Add my phone', async () => {
+      notify('Scan the code with your phone and approve. You’ll be asked twice: once to create, once to lock your key to it.');
+      await key.addUnlocker('phone'); finished('Your phone is now your key.');
+    }, 'primary big'));
+    parent.append(action('Use this computer instead', async () => {
+      notify('Approve with Touch ID, Windows Hello or your device PIN, twice.');
+      await key.addUnlocker('device'); finished('This computer can now unlock your key.');
+    }, 'quiet'));
+  }
+  parent.append(action('Not now', () => finished('Done. Use your key file to unlock.'), 'quiet'));
+}
+
+function keyPage(): void {
+  document.title = 'Your key | GitVault';
+  const page = el('section', '', 'key-page'); main.append(page);
+  let settingUp = false;
+  const paint = () => {
+    if (settingUp) return; // let the setup steps finish before showing settings
+    page.replaceChildren();
+    const stored = key.loadKey();
+    if (!stored) { settingUp = true; keySetup(page, () => { settingUp = false; void render(); }); return; }
+    const open = key.isUnlocked();
+    page.append(lockIcon('stage-lock', open), el('h1', open ? 'Your key is unlocked.' : 'Your key is locked.'));
+    page.append(el('p', open ? 'Private files open instantly in this tab. It locks itself after 15 quiet minutes or when you close the tab.' : 'Unlock it once to open all your private files.', 'lead'));
+    const actions = el('div', '', 'stage-actions'); page.append(actions);
+    if (!open) { keyButtons(actions, () => undefined); return; }
+    actions.append(action('Lock now', () => key.lockKey(), 'primary big'));
+    const ways = el('ul', '', 'ways');
+    stored.unlockers.forEach((u, index) => {
+      const li = el('li'); li.append(el('strong', u.kind === 'phone' ? 'Phone' : 'This computer'), el('span', 'Added ' + new Date(u.added).toLocaleDateString(), 'hint'), action('Remove', () => key.removeUnlocker(index), 'quiet'));
+      ways.append(li);
+    });
+    const fileWay = el('li'); fileWay.append(el('strong', 'Key file'), el('span', 'Always works, on any device', 'hint'), action('Save it again', () => download('gitvault-key.txt', encoder.encode(key.recoveryFile(key.unlockedIdentity(), stored.recipient)), 'text/plain'), 'quiet'));
+    ways.append(fileWay);
+    page.append(el('h2', 'Ways to unlock'), ways);
+    const more = el('div', '', 'phone-add'); page.append(more);
+    if (key.passkeysSupported()) {
+      more.append(action('Add my phone', async () => { notify('Scan the code with your phone and approve, twice.'); await key.addUnlocker('phone'); notify('Your phone is now your key.'); }, 'quiet'),
+        action('Add this computer', async () => { notify('Approve with Touch ID, Windows Hello or your PIN, twice.'); await key.addUnlocker('device'); notify('This computer can now unlock your key.'); }, 'quiet'));
+    }
+    const details = el('details', '', 'fine-print');
+    details.append(el('summary', 'Public key and device settings'), el('p', 'Your public key (safe to share; people can lock files for you with it):', 'hint'), el('code', stored.recipient, 'generated'));
+    details.append(action('Forget my key on this device', () => { if (confirm('Forget your key on this device? You will need your key file to set it up again.')) { key.forgetKey(); try { localStorage.removeItem(RECENT); } catch { /* ignore */ } } }, 'quiet danger'));
+    page.append(details);
+  };
+  paint();
+  rememberCleanup(key.onKeyChange(paint));
+}
+
+function openPage(): void {
+  document.title = 'Open a locked file | GitVault';
+  const zone = el('section', '', 'drop-zone');
+  zone.append(lockIcon('stage-lock'), el('h1', 'Drop a locked file here.'), el('p', 'Opening a file from your computer never contacts GitHub.', 'lead'));
+  zone.append(action('Choose a file', async () => { const file = await pickFile('.age,.txt,application/octet-stream'); if (file) await openLocal(file); }, 'primary big'));
+  main.append(zone);
+}
+async function openLocal(file: File): Promise<void> {
+  if (file.size > MAX_DOWNLOAD) throw new Error('That file is over the 24 MB limit.');
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  shell('open');
+  try { await showEncrypted(file.name, bytes); } catch (error) { bytes.fill(0); notify(message(error), true); }
+}
+async function dropped(file: File): Promise<void> {
+  if (dropHandler) return dropHandler(file);
+  if (file.size <= MAX_KEY_FILE) {
+    const content = await file.text();
+    if (content.includes('AGE-SECRET-KEY-')) { await key.unlockWithRecovery(content); notify('Your key is unlocked.'); return; }
+  }
+  return openLocal(file);
+}
+
 function more(): void {
-  heading('TOOLS & DETAILS', 'More, when you need it.', 'The everyday experience is files and folders. These tools are here when you need more control.');
-  const grid = el('div', '', 'hero-grid');
-  const files = card('Files and folders', 'Open a downloaded file, or work with an encrypted folder whose internal filenames stay private.');
-  const fileLinks = el('div', '', 'tool-links');
-  fileLinks.append(link('Open an encrypted file', route({ page: 'open' }), 'text-link'));
-  fileLinks.append(link('Open a concealed folder (experimental)', './folder.html', 'text-link'));
-  fileLinks.append(link('Create a concealed folder (experimental)', './folder.html#mode=encrypt', 'text-link'));
-  files.append(fileLinks);
-  const tools = card('Keys and guidance', 'Advanced unlock methods are optional. Keep an independent backup of any recovery key.');
-  const toolLinks = el('div', '', 'tool-links');
-  toolLinks.append(link('Passkey lab (experimental)', route({ page: 'passkeys' }), 'text-link'));
-  toolLinks.append(link('How GitVault works', route({ page: 'about' }), 'text-link'));
-  toolLinks.append(link('Security and limitations', 'https://github.com/junovhs/gitvault/blob/main/docs/SECURITY.md', 'text-link'));
-  tools.append(toolLinks);
-  grid.append(files, tools); main.append(grid); securityNote(main);
+  document.title = 'More tools | GitVault';
+  const page = el('section', '', 'plain-page');
+  page.append(el('h1', 'More tools'), el('p', 'You won’t need these day to day.', 'lead'));
+  const list = el('ul', '', 'ways');
+  for (const [title, text, href] of [
+    ['Open a locked file', 'From a download or a clone.', route({ page: 'open' })],
+    ['Private folders', 'Hide file names too. Experimental.', './folder.html'],
+    ['Make a private folder', 'Lock a whole folder as one file. Experimental.', './folder.html#mode=encrypt'],
+    ['Passkey lab', 'Lock a file directly to a passkey. Experimental.', route({ page: 'passkeys' })],
+    ['How it works', 'The whole idea in one page.', route({ page: 'about' })],
+    ['Security model', 'What GitVault protects, and what it doesn’t.', 'https://github.com/junovhs/gitvault/blob/main/docs/SECURITY.md'],
+  ]) { const li = el('li'); li.append(link(title, href), el('span', text, 'hint')); list.append(li); }
+  page.append(list); main.append(page);
 }
 function about(): void {
-  heading('HIDE IN PLAIN SIGHT', 'One repo. Two kinds of files.', 'GitHub stores the locked document. GitVault makes it readable on your device.');
-  const article = card('The complete workflow');
+  document.title = 'How it works | GitVault';
+  const page = el('section', '', 'plain-page');
+  page.append(el('h1', 'How it works'), el('p', 'Your repo is public. Some files in it are locked. GitVault opens them on your device.', 'lead'));
+  const steps = el('ol', '', 'explain');
   for (const [title, text] of [
-    ['Write locally', 'Put private files in .gitvault/plain/, an ignored folder. The CLI config chooses where public encrypted artifacts go.'],
-    ['Encrypt before you commit', 'Run GitVault or install its local hook. Only ciphertext, landing pages and QR images belong in the public commit. Encrypting at push time is too late.'],
-    ['Find it later on GitHub', 'The generated Markdown page explains that the document is encrypted. Its button and QR link to this viewer. No password is in that link.'],
-    ['Unlock without cloning', 'The viewer fetches public ciphertext from GitHub. Use its configured password, private identity, or compatible experimental passkey and read locally.'],
-    ['Or clone and work normally', 'Clone the repository, run the CLI decrypt command with your key, and edit the restored files in the ignored workspace. Encrypt again before committing.'],
-  ]) { article.append(el('h3', title), el('p', text)); }
-  article.append(el('h3', 'What the website does not promise'), el('p', 'GitHub can see filenames, sizes and history. The host and its JavaScript must be trusted. A shared computer or malicious extension can see unlocked content. Losing every key means losing access. Changing a key does not revoke old ciphertext.'), el('h3', 'Phone and passkey boundaries'), el('p', 'A permanent QR opens the viewer on your phone. It is not a login token. The experimental passkey lab uses WebAuthn PRF and requires an independent recovery key. Credential portability depends on your provider. Custom phone-to-desktop pairing is not implemented.'));
-  main.append(article); securityNote(main);
+    ['You lock a note', 'It’s encrypted on your device with your key (standard age encryption). Only the locked file goes in your repo.'],
+    ['GitHub keeps the locked copy', 'Anyone can see the file exists. Nobody can read it without your key.'],
+    ['You open it from anywhere', 'Open the repo here, scan the code with your phone, approve with Face ID. The file unlocks on your screen. Nothing is sent anywhere.'],
+    ['Your key file is your spare', 'If you lose your phone, your key file still opens everything, here or with the standard age command-line tool.'],
+  ]) { const li = el('li'); li.append(el('strong', title), el('p', text)); steps.append(li); }
+  page.append(steps);
+  page.append(el('h2', 'Good to know'), el('p', 'File names, sizes and history are public on GitHub. Locking a file does not remove older unlocked copies from Git history. Trust the site you unlock on; check the address bar says junovhs.github.io. GitVault is early software that has not been independently audited, so keep your key file backed up.', 'hint'));
+  page.append(el('p', 'Phone unlock uses standard passkeys (WebAuthn PRF). It needs a recent phone and browser: iPhone with iOS 18.4+, or Android with Google Password Manager, plus Chrome, Edge, Safari 18+ or desktop Firefox on the computer. It has been tested with simulated authenticators, not yet on every real phone.', 'hint'));
+  main.append(page);
 }
+
 async function render(): Promise<void> {
   const p = new URLSearchParams(location.hash.length > 1 ? location.hash.slice(1) : location.search);
   const page = p.get('page') || ''; shell(page);
   const version = generation;
   try {
-    if (!isSecureContext) throw new Error('Use HTTPS or localhost. Cryptographic operations are not available on an insecure origin.');
-    if (page === 'encrypt') encryptScreen();
-    else if (page === 'open') { heading('LOCAL FILE', 'Already have the locked file?', 'Open ciphertext from a download, a clone, or your phone. This path makes no GitHub requests.'); const box = card('Open an encrypted file'); chooseLocal(box); main.append(box); securityNote(main); }
+    if (!isSecureContext) throw new Error('Open GitVault over HTTPS. Unlocking is disabled on insecure pages.');
+    if (page === 'encrypt') lockScreen();
+    else if (page === 'key') keyPage();
+    else if (page === 'open') openPage();
     else if (page === 'passkeys') {
-      heading('EXPERIMENTAL / WEBAUTHN PRF', 'Your device is a key. Keep a spare.', 'Encrypt using a compatible passkey, with an independently verified recovery identity. No account or server-side key storage.');
+      const header = el('section', '', 'plain-page'); header.append(el('h1', 'Passkey lab'), el('p', 'Experimental: lock a file directly to a passkey, with a separate recovery key.', 'lead')); main.append(header);
       renderPasskeyLab(main, { notify, isCurrent: () => generation === version, onCleanup: rememberCleanup });
-      securityNote(main);
     }
     else if (page === 'more') more();
     else if (page === 'about') about();
     else if (p.get('repo') && p.get('file')?.endsWith('.gvfolder.age')) {
       // Preserve older document-viewer links while sending folder containers to their proper viewer.
-      const href = './folder.html' + route({ repo: p.get('repo')!, file: p.get('file')!, ...(p.get('ref') ? { ref: p.get('ref')! } : {}) });
-      location.replace(href);
+      location.replace('./folder.html' + route({ repo: p.get('repo')!, file: p.get('file')!, ...(p.get('ref') ? { ref: p.get('ref')! } : {}) }));
     }
     else if (p.get('repo') && p.get('file')) await showRemote(p.get('repo')!, p.get('file')!, p.get('ref') || '', p.get('demo') === '1');
     else if (p.get('repo')) await browse(p.get('repo')!, p.get('dir') || '', p.get('ref') || '');
     else home();
-  } catch (e) { if (version === generation && !(e instanceof DOMException && e.name === 'AbortError')) notify(e instanceof Error ? e.message : 'Unable to load this page.', true); }
+  } catch (e) { if (version === generation && !(e instanceof DOMException && e.name === 'AbortError')) notify(message(e), true); }
 }
 window.addEventListener('hashchange', () => { void render(); });
-window.addEventListener('pagehide', clearPrivate);
+// A link to the page you are already on (New note, Write another) starts that page fresh.
+document.addEventListener('click', event => {
+  const a = (event.target as Element | null)?.closest?.('a');
+  if (a && a.getAttribute('href')?.startsWith('#') && a.getAttribute('href') === location.hash && !event.defaultPrevented) { event.preventDefault(); void render(); }
+});
+window.addEventListener('pagehide', () => { clearPrivate(); key.lockKey(); });
 window.addEventListener('pageshow', event => { if (event.persisted) void render(); });
-for (const event of ['pointerdown', 'keydown']) window.addEventListener(event, () => { if (currentPlain) armAutoLock(); }, { passive: true });
+for (const event of ['pointerdown', 'keydown']) window.addEventListener(event, () => { if (currentPlain) armAutoLock(); if (key.isUnlocked()) armKeyLock(); }, { passive: true });
+window.addEventListener('dragover', event => { if (event.dataTransfer?.types.includes('Files')) { event.preventDefault(); document.body.classList.add('dropping'); } });
+window.addEventListener('dragleave', event => { if (!event.relatedTarget) document.body.classList.remove('dropping'); });
+window.addEventListener('drop', event => {
+  const file = event.dataTransfer?.files[0]; if (!file) return;
+  event.preventDefault(); document.body.classList.remove('dropping');
+  const version = generation;
+  dropped(file).catch(error => { if (version === generation || status.isConnected) notify(message(error), true); });
+});
 void render();

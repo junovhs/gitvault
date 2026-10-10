@@ -21,6 +21,20 @@ export function ciphertextBytes(bytes: Uint8Array): Uint8Array {
   }
   return raw;
 }
+/** Which unlock methods an age file accepts, read from its public header stanza types. */
+export type LockKind = 'password' | 'key' | 'passkey';
+export function lockKinds(bytes: Uint8Array): Set<LockKind> {
+  const raw = ciphertextBytes(bytes);
+  const header = new TextDecoder().decode(raw.subarray(0, 65536));
+  const kinds = new Set<LockKind>();
+  for (const line of header.slice(0, header.indexOf('\n--- ')).split('\n')) {
+    const type = line.match(/^-> (\S+)/)?.[1];
+    if (type === 'scrypt') kinds.add('password');
+    else if (type === 'X25519') kinds.add('key');
+    else if (type === 'age-encryption.org/fido2prf') kinds.add('passkey');
+  }
+  return kinds;
+}
 export async function encrypt(bytes: Uint8Array, secret: EncryptionSecret): Promise<Uint8Array> {
   const e = new Encrypter();
   if ('passphrase' in secret) { if (!secret.passphrase) throw new Error('Password is required'); e.setPassphrase(secret.passphrase); }

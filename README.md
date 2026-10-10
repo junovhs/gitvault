@@ -45,10 +45,12 @@ The permanent QR contains a public viewer URL, never a password or key. Scanning
 | Safe Markdown preview, editing and re-encrypted downloads | Implemented and browser-tested |
 | Ciphertext-only GitHub ZIP bundles | Implemented and tested |
 | Ignored-workspace CLI, key generation, exact staging and local pre-commit hook | Implemented and integration-tested |
+| **Your key**: one age identity, a verified recovery file, notes locked to it with no password | Implemented and browser-tested |
+| **Phone as a key**: unlock your key on a laptop with your phone's Face ID / fingerprint (WebAuthn PRF over the browser's built-in QR/hybrid flow) | Experimental; simulated hybrid authenticator tests passed, not yet tested on physical phones |
 | Passkey PRF plus independently verified age recovery | Experimental; virtual-authenticator tests passed |
 | Encrypted folders with hidden internal filenames and private tree browsing | Experimental; unit and browser tests passed |
 | Firefox and WebKit basic password/key unlock | Automated engine smoke checks passed |
-| Custom phone-to-desktop pairing and direct GitHub commits from the viewer | Not implemented |
+| A custom phone-to-desktop relay (deliberately not built; the standard WebAuthn hybrid flow is used instead) and direct GitHub commits from the viewer | Not implemented |
 
 A file must have been encrypted for its chosen unlock method. A password-only file does not become passkey-enabled just because the UI offers passkeys. Physical iPhone/Android/passkey-provider compatibility has not been certified.
 
@@ -63,7 +65,7 @@ npm ci
 npm run dev
 ```
 
-Open the Vite address with `/gitvault/` as its base path. Try **Browse**, **Open a file**, **Encrypt**, **Passkey lab**, or **Explore encrypted folders**. The intentionally public demo password is:
+Open the Vite address with `/gitvault/` as its base path. Paste a repository, write a **New note**, or set up **your key**. Specialized tools live under **More tools** in the footer. The intentionally public demo password is:
 
 ```text
 gitvault-demo-not-a-secret

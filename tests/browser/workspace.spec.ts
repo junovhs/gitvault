@@ -25,7 +25,7 @@ test('repository browse opens a concealed folder in the same project context', a
   });
   await page.goto('./#repo=example%2Frepo&dir=private&ref=feature%2Fprivate');
   await expect(page.locator('.file-row')).toHaveCount(2);
-  const folder = page.locator('.file-row').filter({ hasText: 'Private folder · names hidden' });
+  const folder = page.locator('.file-row').filter({ hasText: 'Private folder' });
   await expect(folder).toContainText('private-notes');
   await expect(folder).not.toContainText('.age');
   await folder.click();
@@ -41,25 +41,30 @@ test('repository browse opens a concealed folder in the same project context', a
   await expect(page.getByText('Not public.')).toBeVisible();
 });
 
-test('project context follows Add file and Add folder; bundle controls are initially optional', async ({ page }) => {
+test('project context follows Add a secret note into the lock screen', async ({ page }) => {
   await page.route('https://api.github.com/repos/example/repo/contents**', route => route.fulfill({ json: [] }));
   await page.goto('./#repo=example%2Frepo&ref=feature%2Fprivate');
-  await page.getByRole('link', { name: 'Add a private file to this project' }).click();
-  await expect(page.getByRole('heading', { name: 'Start with a note or file.' })).toBeVisible();
-  const publishing = page.locator('details.publish-options');
-  await expect(publishing).toHaveAttribute('open', '');
-  await expect(page.getByLabel('Public repository', { exact: true })).toHaveValue('example/repo');
-  await expect(page.getByLabel('Branch or commit (optional)', { exact: true })).toHaveValue('feature/private');
-  await page.getByRole('link', { name: /Add a private folder instead/ }).click();
-  await expect(page).toHaveURL(/folder\.html#mode=encrypt/);
-  await expect(page.getByLabel('Public repository for folder bundle')).toHaveValue('example/repo');
+  await expect(page.getByText('No private files here yet.')).toBeVisible();
+  await page.getByRole('link', { name: 'Add a secret note' }).click();
+  await expect(page.getByLabel('Private note')).toBeVisible();
+  await expect(page.locator('details.where summary')).toHaveText('Goes in example/repo / private');
+  await page.locator('details.where summary').click();
+  await expect(page.getByLabel('Repository', { exact: true })).toHaveValue('example/repo');
 });
 
-test('the regular Add a file screen starts without distracting publishing options', async ({ page }) => {
+test('the note screen starts with the repo option tucked away', async ({ page }) => {
   await page.goto('./#page=encrypt');
-  const publishing = page.locator('details.publish-options');
-  await expect(publishing).not.toHaveAttribute('open', '');
-  await expect(page.getByRole('button', { name: 'Encrypt file', exact: true })).toBeVisible();
-  await publishing.locator('summary').click();
-  await expect(page.getByLabel('Public repository', { exact: true })).toBeVisible();
+  await expect(page.locator('details.where')).not.toHaveAttribute('open', '');
+  await expect(page.getByRole('button', { name: 'Lock it' })).toBeVisible();
+  await page.locator('details.where summary').click();
+  await expect(page.getByLabel('Repository', { exact: true })).toBeVisible();
+});
+
+test('pasting a GitHub URL opens the right repo, branch and folder', async ({ page }) => {
+  await page.route('https://api.github.com/repos/example/repo/contents/**', route => route.fulfill({ json: [] }));
+  await page.goto('./');
+  await page.getByLabel('GitHub repository').fill('https://github.com/example/repo/tree/main/docs');
+  await page.getByLabel('GitHub repository').press('Enter');
+  await expect(page).toHaveURL(/repo=example%2Frepo&ref=main&dir=docs/);
+  await expect(page.getByRole('heading', { name: /repo/ })).toBeVisible();
 });

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — October 9, 2026
+
+### One obvious action per screen
+
+Redesigned the viewer: a single paste-your-repo box, a repository view that leads with its private files, an unlock screen that picks the right method from the file's age header (no method dropdown), a writing sheet with one **Lock it** button, and drag-and-drop for locked files and key files. Pasted GitHub URLs, including branch and folder URLs, are understood.
+
+### Your key, and your phone as a key
+
+Added a personal age identity ("your key"). Setup downloads a standard age identity file and completes only after that exact file is handed back. Notes lock to its public key with no password. Your phone (or this computer) can be added as an unlocker: the identity is wrapped with a WebAuthn PRF passkey created with the `hybrid` hint, so the laptop shows the browser's own QR code and the phone approves with Face ID or a fingerprint. Files stay plain X25519 age files that the age CLI opens with the key file. Only the public key and the passkey-wrapped envelope are stored in the browser; the private key lives in tab memory, locks after 15 idle minutes or when the page is hidden. Physical phones and passkey providers have not been certified.
+
+
 ## 0.2.0 prototype — October 9, 2026
 
 ### Working document workflow

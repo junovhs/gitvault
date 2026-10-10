@@ -35,3 +35,28 @@ The permanent QR in a repository landing page is only a public viewer link. Scan
 - [age-encryption implementation](https://github.com/FiloSottile/typage)
 - [WebAuthn PRF source](https://github.com/FiloSottile/typage/blob/main/lib/webauthn.ts)
 - [WebAuthn PRF extension explainer](https://github.com/w3c/webauthn/wiki/Explainer:-PRF-extension)
+
+## Phone as a key (your key)
+
+This is the everyday path; the lab above remains for files locked directly to a passkey.
+
+1. **Your key** is one standard age X25519 identity. Setup downloads it as `gitvault-key.txt` and finishes only when that exact file is handed back, proving the recovery copy exists.
+2. **Add my phone** creates a discoverable WebAuthn credential with the PRF extension, `authenticatorAttachment: cross-platform`, and the WebAuthn Level 3 `hints: ["hybrid"]`, so a desktop browser goes straight to its cross-device QR code. **Use this computer** uses `platform` and `hints: ["client-device"]` (Touch ID, Windows Hello).
+3. Your age identity is then encrypted to that credential with the same `age-encryption.org/fido2prf` recipient the lab uses. The resulting armored envelope and the credential descriptor are stored in this browser's `localStorage`, alongside your public key. Nothing secret is stored unencrypted.
+4. **Unlock with my phone** asks the browser for the PRF output (the phone approves with Face ID or a fingerprint), decrypts the envelope, checks that the identity matches your stored public key, and keeps it in tab memory. It locks after 15 idle minutes, on **Lock now**, or when the page is hidden.
+
+Files are always encrypted to your **X25519 public key**, never to the passkey, so `age -d -i gitvault-key.txt` opens everything without GitVault, a browser, or the phone.
+
+### Why not a custom pairing protocol
+
+The browser's hybrid transport already provides the right properties: a QR-initiated, Bluetooth-proximity-checked, end-to-end encrypted tunnel between the computer and the phone's platform authenticator. A homemade relay would add a server, a new protocol and new attack surface, which this project does not want.
+
+### Device limitations
+
+- **iPhone**: iCloud Keychain passkeys return PRF results from iOS/iPadOS 18.4 (earlier 18.x had cross-device inconsistencies).
+- **Android**: Google Password Manager passkeys support PRF; third-party providers vary.
+- **Computer browser**: Chrome/Edge 132+, Safari 18+ on macOS 15+, desktop Firefox 139+. Windows Hello PRF as a *local* authenticator is inconsistent; prefer the phone.
+- Creation fails clearly when PRF is not offered; the key file always keeps working.
+- Passkeys are scoped to the hostname (`junovhs.github.io`), not the repository. Every page on that host is inside the trust boundary; a dedicated origin is planned.
+- The phone stores a passkey, not your files or key. The wrapped envelope lives in each computer's browser, so a new computer needs the key file once, then **Add my phone** again (this creates another passkey on the phone).
+- Tested with Chromium's virtual authenticator on the `cable` (hybrid) and `internal` transports, including a no-PRF authenticator. **Not yet tested on a physical iPhone or Android phone.**

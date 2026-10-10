@@ -2,6 +2,19 @@
 export function validRepo(value: string): boolean {
   return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value) && !value.split('/').some(p => p === '.' || p === '..');
 }
+/** Accepts `owner/repo`, a GitHub URL, or a GitHub tree/blob URL pasted from the address bar. */
+export function parseRepoInput(value: string): { repo: string; ref?: string; dir?: string } | null {
+  let text = value.trim().replace(/^git@github\.com:/i, '').replace(/\.git$/i, '').replace(/\/+$/, '');
+  text = text.replace(/^(?:https?:\/\/)?(?:www\.)?github\.com\//i, '');
+  const [owner, name, kind, ref, ...rest] = text.split(/[?#]/)[0].split('/');
+  const repo = owner + '/' + name;
+  if (!owner || !name || !validRepo(repo)) return null;
+  if ((kind === 'tree' || kind === 'blob') && ref) {
+    const dir = (kind === 'blob' ? rest.slice(0, -1) : rest).map(decodeURIComponent).join('/');
+    return { repo, ref: decodeURIComponent(ref), ...(dir ? { dir } : {}) };
+  }
+  return kind ? null : { repo };
+}
 export function canonicalPath(value: string): string { return value.normalize('NFC').toLowerCase(); }
 
 export function safeRelative(value: string): string {
