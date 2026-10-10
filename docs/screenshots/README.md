@@ -2,9 +2,9 @@
 
 These are captures of the running application, not design mockups. All visible documents and credentials are intentionally public test fixtures.
 
-Tested source commit: `9ef5b7213b09c9332bc12062bf74c36881c417ce`.
+Tested source commit: `1e5df99a111b9dbaa9638c06d09c3ce9487f17c1`.
 
-[Successful verification and browser tests](https://github.com/junovhs/gitvault/actions/runs/38011404854)
+[Successful verification and browser tests](https://github.com/junovhs/gitvault/actions/runs/38013328968)
 
 The gallery updates after successful main-branch verification. Newer unverified commits may not be reflected here. Mobile-width images are browser viewport tests, not physical-phone certification. Passkey tests use a virtual authenticator, not a real phone or provider.
 
