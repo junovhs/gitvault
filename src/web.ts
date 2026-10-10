@@ -213,9 +213,10 @@ async function browse(repo: string, dir: string, ref: string): Promise<void> {
     if (!locked) { copy.append(el('strong', 'No private files here yet.'), el('span', 'Add one and it will show up with a lock.')); banner.append(lockIcon('banner-lock'), copy, link('Add a secret note', route({ page: 'encrypt', repo, ...(ref ? { ref } : {}) }), 'button-link primary')); return; }
     const open = key.isUnlocked();
     banner.append(lockIcon('banner-lock', open));
-    copy.append(el('strong', open ? 'Your key is unlocked.' : locked + (locked === 1 ? ' private file' : ' private files') + ' here.'), el('span', open ? 'Tap any private file to read it.' : 'Unlock your key once, then open anything.'));
+    const hasKey = !!key.loadKey();
+    copy.append(el('strong', open ? 'Your key is unlocked.' : locked + (locked === 1 ? ' private file' : ' private files') + ' here.'), el('span', open ? 'Tap any private file to read it.' : hasKey ? 'Unlock your key once, then open anything.' : 'Tap one to unlock it.'));
     banner.append(copy);
-    if (!open) { const buttons = el('div', '', 'banner-actions'); keyButtons(buttons, () => { paintBanner(); paintList(); }); banner.append(buttons); }
+    if (!open && hasKey) { const buttons = el('div', '', 'banner-actions'); keyButtons(buttons, () => { paintBanner(); paintList(); }); banner.append(buttons); }
   };
   const list = el('div', '', 'file-list');
   const filter = el('input', '', 'filter'); filter.placeholder = 'Find a file'; filter.setAttribute('aria-label', 'Filter files'); filter.type = 'search';
